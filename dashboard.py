@@ -71,6 +71,14 @@ class DashboardAnalyzer:
                 else:
                     record['state'] = 'Unknown'
                 
+                # Extract categories from sources
+                categories = []
+                for source in contact.get('sources', []):
+                    category = source.get('category', '').strip()
+                    if category and category not in categories:
+                        categories.append(category)
+                record['categories'] = ', '.join(categories) if categories else 'construction'
+                
                 # Calculate priority score
                 record['priority_score'] = self._calculate_priority_score(record)
                 record['priority_level'] = self._get_priority_level(record['priority_score'])
@@ -166,6 +174,23 @@ def main():
     # Sidebar filters
     st.sidebar.header("🔍 Filters")
     
+    # Extract unique categories from the data
+    all_categories = set()
+    for _, contact in analyzer.df.iterrows():
+        categories = contact.get('categories', 'construction').split(',')
+        for cat in categories:
+            cat = cat.strip()
+            if cat:
+                all_categories.add(cat.title())
+    
+    # Machine Category filter (NEW!)
+    category_options = ['All Categories'] + sorted(list(all_categories))
+    selected_category = st.sidebar.selectbox("🏗️ Equipment Category", category_options)
+    
+    # Quick search for specific equipment
+    st.sidebar.markdown("---")
+    search_term = st.sidebar.text_input("🔍 Search Equipment/Company", placeholder="e.g., CAT, John Deere, Excavator")
+    
     # Priority filter
     priority_options = ['All'] + list(analyzer.df['priority_level'].unique())
     selected_priority = st.sidebar.selectbox("Priority Level", priority_options)
@@ -179,6 +204,20 @@ def main():
     
     # Apply filters
     filtered_df = analyzer.df.copy()
+    
+    # Category filter (NEW!)
+    if selected_category != 'All Categories':
+        # Filter contacts that have this category in their categories string
+        filtered_df = filtered_df[filtered_df['categories'].str.contains(selected_category.lower(), case=False, na=False)]
+    
+    # Search filter (NEW!)
+    if search_term:
+        search_mask = (
+            filtered_df['seller_company'].str.contains(search_term, case=False, na=False) |
+            filtered_df['categories'].str.contains(search_term, case=False, na=False) |
+            filtered_df['primary_location'].str.contains(search_term, case=False, na=False)
+        )
+        filtered_df = filtered_df[search_mask]
     
     if selected_priority != 'All':
         filtered_df = filtered_df[filtered_df['priority_level'] == selected_priority]
@@ -237,6 +276,34 @@ def main():
     with col4:
         multi_category = len([c for c in filtered_df['categories'] if ',' in str(c)])
         st.metric("Multi-Category Dealers", f"{multi_category:,}")
+    
+    # Category-Specific Insights (NEW!)
+    if selected_category != 'All Categories':
+        st.markdown("---")
+        st.subheader(f"🎯 {selected_category} Market Analysis")
+        
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            avg_listings_category = filtered_df['total_listings'].mean()
+            st.metric("Avg Listings per Dealer", f"{avg_listings_category:.1f}")
+        
+        with col2:
+            top_dealer = filtered_df.nlargest(1, 'total_listings')
+            if not top_dealer.empty:
+                st.metric("Top Dealer", top_dealer.iloc[0]['seller_company'][:20] + "...", f"{top_dealer.iloc[0]['total_listings']} listings")
+        
+        with col3:
+            premium_in_category = len(filtered_df[filtered_df['priority_level'] == 'Premium'])
+            st.metric("Premium Dealers", f"{premium_in_category}")
+        
+        with col4:
+            states_with_category = filtered_df['state'].nunique()
+            st.metric("States Covered", f"{states_with_category}")
+        
+        # Category insights
+        st.info(f"💡 **{selected_category} Insights:** {len(filtered_df):,} dealers found with avg {avg_listings_category:.1f} listings each. "
+                f"Top markets: {', '.join(filtered_df['state'].value_counts().head(3).index.tolist())}")
     
     # Charts row 1
     col1, col2 = st.columns(2)

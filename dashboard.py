@@ -45,13 +45,9 @@ class DashboardAnalyzer:
     def load_data(self):
         """Load and process contact data"""
         try:
-            # Try loading from Streamlit secrets first (for cloud deployment)
-            if hasattr(st, 'secrets') and 'database' in st.secrets:
-                self.master_log = json.loads(st.secrets['database']['contacts'])
-            else:
-                # Fallback to local file
-                with open(self.master_log_file, 'r', encoding='utf-8') as f:
-                    self.master_log = json.load(f)
+            # Load from local file (works both locally and on Streamlit Cloud)
+            with open(self.master_log_file, 'r', encoding='utf-8') as f:
+                self.master_log = json.load(f)
             
             # Convert to DataFrame
             records = []

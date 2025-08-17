@@ -206,6 +206,38 @@ def main():
         avg_listings = filtered_df['total_listings'].mean()
         st.metric("Avg Listings/Contact", f"{avg_listings:.1f}")
     
+    # Equipment Category Analysis
+    st.subheader("🏗️ Equipment Category Breakdown")
+    col1, col2, col3, col4 = st.columns(4)
+    
+    # Extract equipment categories from sources
+    category_counts = {}
+    for _, contact in filtered_df.iterrows():
+        categories = contact.get('categories', 'construction').split(',')
+        for cat in categories:
+            cat = cat.strip()
+            if cat:
+                category_counts[cat] = category_counts.get(cat, 0) + 1
+    
+    # Display top categories
+    sorted_categories = sorted(category_counts.items(), key=lambda x: x[1], reverse=True)
+    
+    with col1:
+        if sorted_categories:
+            st.metric("Primary Category", sorted_categories[0][0].title(), f"{sorted_categories[0][1]:,} contacts")
+    
+    with col2:
+        if len(sorted_categories) > 1:
+            st.metric("Secondary Category", sorted_categories[1][0].title(), f"{sorted_categories[1][1]:,} contacts")
+    
+    with col3:
+        excavator_count = category_counts.get('construction', 0)  # Legacy category
+        st.metric("Construction Equipment", f"{excavator_count:,}")
+    
+    with col4:
+        multi_category = len([c for c in filtered_df['categories'] if ',' in str(c)])
+        st.metric("Multi-Category Dealers", f"{multi_category:,}")
+    
     # Charts row 1
     col1, col2 = st.columns(2)
     
@@ -226,6 +258,33 @@ def main():
         st.plotly_chart(fig_priority, use_container_width=True)
     
     with col2:
+        st.subheader("🏗️ Equipment Categories")
+        if category_counts:
+            # Create category chart
+            cat_df = pd.DataFrame(list(category_counts.items()), columns=['Category', 'Count'])
+            cat_df = cat_df.sort_values('Count', ascending=True).tail(8)  # Top 8 categories
+            
+            fig_cat = px.bar(
+                cat_df,
+                x='Count',
+                y='Category',
+                orientation='h',
+                labels={'Count': 'Number of Contacts', 'Category': 'Equipment Type'},
+                color='Count',
+                color_continuous_scale='viridis'
+            )
+            fig_cat.update_layout(
+                yaxis={'categoryorder': 'total ascending'},
+                showlegend=False
+            )
+            st.plotly_chart(fig_cat, use_container_width=True)
+        else:
+            st.info("No category data available")
+    
+    # Geographic Distribution (moved to next row)
+    col1, col2 = st.columns(2)
+    
+    with col1:
         st.subheader("🗺️ Geographic Distribution")
         state_counts = filtered_df['state'].value_counts().head(10)
         fig_geo = px.bar(

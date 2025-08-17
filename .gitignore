@@ -1,0 +1,119 @@
+# Sensitive Data - DO NOT COMMIT
+master_contact_database.json
+*.json
+contact_analysis_report_*.csv
+high_priority_outreach_targets.csv
+priority_outreach_contacts.csv
+seller_contacts_*.csv
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Environment and Configuration
+.env
+.env.local
+.env.production
+config.ini
+secrets.toml
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environments
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+.venv/
+
+# IDE and Editor Files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Logs and Output
+*.log
+logs/
+output/
+temp/
+tmp/
+
+# Streamlit
+.streamlit/secrets.toml
+
+# Go (for your scraper)
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+ocr-scraper
+./ocr-scraper
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+
+# Go workspace file
+go.work
+
+# Dependency directories
+vendor/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Backup files
+*.bak
+*.backup
+*.old
+
+# Redis dump files
+dump.rdb
+
+# OCR temporary files
+*.pdf
+*.png
+*.jpg
+*.jpeg
+ocr_temp/
+
+# Analytics and reporting cache
+.cache/
+.pytest_cache/

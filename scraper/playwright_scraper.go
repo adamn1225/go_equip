@@ -215,6 +215,7 @@ func TakeScreenshotPlaywright(targetURL string) string {
 
 	// Navigate to the target URL with increased timeout and retry logic
 	log.Printf("Navigating to: %s", targetURL)
+	log.Printf("🔍 DEBUG: About to navigate to URL: %s", targetURL)
 	maxRetries := 3
 	var navErr error
 
@@ -240,6 +241,11 @@ func TakeScreenshotPlaywright(targetURL string) string {
 		log.Printf("Error navigating to page: %v", navErr)
 		return ""
 	}
+
+	// Log the actual URL we landed on
+	actualURL := globalPage.URL()
+	log.Printf("🔍 DEBUG: Successfully navigated. Current URL: %s", actualURL)
+	log.Printf("🔍 DEBUG: Expected URL: %s", targetURL)
 
 	// Wait for page to load and check for CAPTCHA
 	time.Sleep(3 * time.Second)

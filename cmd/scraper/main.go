@@ -51,7 +51,7 @@ func exportToCSV(sellerInfos []map[string]string, filename string) error {
 }
 
 // exportToJSON exports seller information to a JSON file
-func exportToJSON(sellerInfos []map[string]string, filename string) error {
+func exportToJSON(sellerInfos []map[string]string, filename string, category string) error {
 	// Create a structured format for better JSON output
 	type Contact struct {
 		Seller       string `json:"seller_company"`
@@ -77,9 +77,11 @@ func exportToJSON(sellerInfos []map[string]string, filename string) error {
 
 	// Create export data with metadata
 	exportData := map[string]interface{}{
-		"export_timestamp": time.Now().Format(time.RFC3339),
-		"total_contacts":   len(contacts),
-		"contacts":         contacts,
+		"export_timestamp":   time.Now().Format(time.RFC3339),
+		"total_contacts":     len(contacts),
+		"equipment_category": category,
+		"source_site":        "machinerytrader.com",
+		"contacts":           contacts,
 	}
 
 	jsonData, err := json.MarshalIndent(exportData, "", "  ")
@@ -91,13 +93,26 @@ func exportToJSON(sellerInfos []map[string]string, filename string) error {
 }
 
 func main() {
+	// MachineryTrader category mapping
+	categoryMap := map[string]string{
+		"1015": "cranes",    // Mini Excavators
+		"1025": "dozer",     // Dozers/Bulldozers
+		"1026": "excavator", // Excavators
+		"1027": "loader",    // Loaders
+		"1028": "scraper",   // Scrapers
+		"1029": "grader",    // Graders
+		// Add more as you discover them
+	}
+
 	// Dynamic page scraping - start from page 150 and continue until no more pages
-	baseURL := "https://www.machinerytrader.com/listings/search?Category=1025&page="
-	startPage := 1
-	maxPages := 400             // Total pages available
-	maxConsecutiveFailures := 5 // Stop if we get 5 consecutive failures (more robust)
+	baseURL := "https://www.machinerytrader.com/listings/search?Category=1015&page="
+	currentCategory := categoryMap["1015"] // Extract category from URL
+	startPage := 1                         // Start from where you left off (was 190)
+	maxPages := 400                        // Total pages available
+	maxConsecutiveFailures := 5            // Stop if we get 5 consecutive failures (more robust)
 
 	log.Printf("Starting dynamic multi-page OCR scraper from page %d", startPage)
+	log.Printf("🎯 Scraping category: %s (Category=1015)", currentCategory)
 	log.Printf("🎯 Target: Process through page %d (total %d pages)", maxPages, maxPages)
 	log.Println("🔍 The browser will open visibly so you can manually solve any CAPTCHAs")
 	log.Println("💡 Will continue scraping until all pages are processed or consecutive failures occur...")
@@ -115,7 +130,7 @@ func main() {
 			jsonFile := fmt.Sprintf("seller_contacts_emergency_%s.json", timestamp)
 
 			exportToCSV(allSellerInfo, csvFile)
-			exportToJSON(allSellerInfo, jsonFile)
+			exportToJSON(allSellerInfo, jsonFile, currentCategory)
 			log.Printf("💾 Emergency data saved to %s and %s", csvFile, jsonFile)
 		}
 		scraper.CloseBrowserSession()
@@ -125,6 +140,7 @@ func main() {
 		targetURL := fmt.Sprintf("%s%d", baseURL, currentPage)
 
 		log.Printf("\n📄 Processing page %d: %s", currentPage, targetURL)
+		log.Printf("🔍 DEBUG: startPage=%d, currentPage=%d, targetURL=%s", startPage, currentPage, targetURL)
 
 		// Create job
 		job := models.Job{URL: targetURL}
@@ -225,11 +241,12 @@ func main() {
 		}
 
 		// Export to JSON
-		err = exportToJSON(allSellerInfo, jsonFile)
+		err = exportToJSON(allSellerInfo, jsonFile, currentCategory)
 		if err != nil {
 			log.Printf("❌ Error exporting to JSON: %v", err)
 		} else {
 			log.Printf("💾 JSON exported successfully: %s", jsonFile)
+			log.Printf("📊 Category: %s, Site: machinerytrader.com", currentCategory)
 		}
 	}
 

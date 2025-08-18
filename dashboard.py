@@ -342,23 +342,54 @@ def main():
         general_analytics_dashboard(analyzer)
 
 def general_analytics_dashboard(analyzer):
-    """Original general analytics dashboard"""
+    """Original general analytics dashboard with dynamic category detection"""
     
     # Sidebar filters
     st.sidebar.header("🔍 Filters")
     
-    # Extract unique categories from the data
-    all_categories = set()
+    # Extract unique categories from the data with statistics
+    all_categories = {}
+    category_stats = {}
+    
     for _, contact in analyzer.df.iterrows():
         categories = contact.get('categories', 'construction').split(',')
         for cat in categories:
-            cat = cat.strip()
-            if cat:
-                all_categories.add(cat.title())
+            cat = cat.strip().lower()
+            if cat and cat != '':
+                # Clean category name for display
+                clean_cat = cat.replace('_', ' ').title()
+                if clean_cat not in all_categories:
+                    all_categories[clean_cat] = cat
+                    category_stats[clean_cat] = {
+                        'count': 0,
+                        'total_listings': 0,
+                        'states': set()
+                    }
+                
+                category_stats[clean_cat]['count'] += 1
+                category_stats[clean_cat]['total_listings'] += contact.get('total_listings', 0)
+                if contact.get('state') and contact.get('state') != 'Unknown':
+                    category_stats[clean_cat]['states'].add(contact.get('state'))
     
-    # Machine Category filter (NEW!)
-    category_options = ['All Categories'] + sorted(list(all_categories))
+    # Sort categories by contact count (most popular first)
+    sorted_categories = sorted(category_stats.items(), key=lambda x: x[1]['count'], reverse=True)
+    
+    # Machine Category filter with dynamic options
+    category_options = ['All Categories'] + [cat[0] for cat in sorted_categories]
     selected_category = st.sidebar.selectbox("🏗️ Equipment Category", category_options)
+    
+    # Show category insights in sidebar
+    if selected_category != 'All Categories' and selected_category in category_stats:
+        stats = category_stats[selected_category]
+        st.sidebar.markdown("---")
+        st.sidebar.markdown(f"### 📊 {selected_category} Overview")
+        st.sidebar.metric("Dealers", f"{stats['count']:,}")
+        st.sidebar.metric("Total Listings", f"{stats['total_listings']:,}")
+        st.sidebar.metric("States", f"{len(stats['states'])}")
+        
+        if stats['count'] > 0:
+            avg_listings = stats['total_listings'] / stats['count']
+            st.sidebar.metric("Avg Listings/Dealer", f"{avg_listings:.1f}")
     
     # Quick search for specific equipment
     st.sidebar.markdown("---")
@@ -417,6 +448,73 @@ def general_analytics_dashboard(analyzer):
     with col4:
         avg_listings = filtered_df['total_listings'].mean()
         st.metric("Avg Listings/Contact", f"{avg_listings:.1f}")
+    
+    # Use native Streamlit components for better compatibility
+    
+    # Show category grid if we have multiple categories
+    if len(sorted_categories) > 1:
+        st.markdown("---")
+        st.markdown("### 📊 Equipment Categories Overview")
+        
+        # Use Streamlit columns for better rendering
+        total_contacts = len(analyzer.df)
+        num_categories = len(sorted_categories)
+        
+        # Create grid using Streamlit columns (3 columns max for good layout)
+        cols_per_row = min(3, num_categories)
+        rows_needed = (num_categories + cols_per_row - 1) // cols_per_row
+        
+        category_index = 0
+        for row in range(rows_needed):
+            # Create columns for this row
+            cols = st.columns(cols_per_row)
+            
+            for col_idx in range(cols_per_row):
+                if category_index < num_categories:
+                    category_name, stats = sorted_categories[category_index]
+                    
+                    with cols[col_idx]:
+                        # Check if this is a new category
+                        percentage = (stats['count'] / total_contacts * 100) if total_contacts > 0 else 0
+                        is_new = stats['count'] < 100 or percentage < 5
+                        
+                        # Generate equipment emoji
+                        emojis = {
+                            'wheel loaders': '🚜', 'construction': '🏗️', 'excavators': '⚡',
+                            'bulldozers': '🦏', 'cranes': '🏗️', 'tractors': '🚜', 
+                            'trucks': '🚛', 'trailers': '📦', 'forklifts': '🏗️',
+                            'heavy haulers': '🚛', 'equipment': '⚙️', 'dozer': '🚧',
+                            'excavator': '⚡'
+                        }
+                        emoji = emojis.get(category_name.lower(), '🔧')
+                        
+                        # Calculate average listings per dealer
+                        avg_listings = stats['total_listings'] / stats['count'] if stats['count'] > 0 else 0
+                        
+                        # Create clean card using Streamlit container
+                        with st.container():
+                            # Add some visual styling with emojis and colors
+                            if is_new:
+                                st.markdown(f"🔥 **{emoji} {category_name}** *(NEW!)*")
+                            else:
+                                st.markdown(f"**{emoji} {category_name}**")
+                            
+                            st.markdown(f"*{percentage:.1f}% of total dealers*")
+                            st.markdown("---")
+                        
+                        # Create metrics in a 2x2 grid
+                        metric_col1, metric_col2 = st.columns(2)
+                        with metric_col1:
+                            st.metric("Dealers", f"{stats['count']:,}")
+                            st.metric("States", f"{len(stats['states'])}")
+                        with metric_col2:
+                            st.metric("Listings", f"{stats['total_listings']:,}")
+                            st.metric("Avg/Dealer", f"{avg_listings:.1f}")
+                        
+                        # Add visual separation between categories
+                        st.markdown("<br>", unsafe_allow_html=True)
+                    
+                    category_index += 1
     
     # Equipment Category Analysis
     st.subheader("🏗️ Equipment Category Breakdown")

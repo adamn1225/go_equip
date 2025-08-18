@@ -21,8 +21,22 @@ app = Flask(__name__)
 captcha_solver = CAPTCHASolver()
 
 # Set your API keys here - IMPORTANT!
-# captcha_solver.api_key_2captcha = "YOUR_2CAPTCHA_KEY"  # Get from https://2captcha.com
-# captcha_solver.api_key_anticaptcha = "YOUR_ANTICAPTCHA_KEY"  # Get from https://anti-captcha.com
+# You can use one or both services for redundancy
+# 
+# 2CAPTCHA.COM:
+# - Sign up: https://2captcha.com
+# - Cost: ~$1-3 per 1000 CAPTCHAs  
+# - Speed: 10-120 seconds
+# captcha_solver.api_key_2captcha = "YOUR_2CAPTCHA_KEY_HERE"
+#
+# ANTI-CAPTCHA.COM: 
+# - Sign up: https://anti-captcha.com
+# - Cost: ~$1-2 per 1000 CAPTCHAs
+# - Speed: 5-60 seconds  
+# captcha_solver.api_key_anticaptcha = "YOUR_ANTICAPTCHA_KEY_HERE"
+#
+# 💡 TIP: Configure both for maximum reliability!
+# The system will try 2captcha first, then anticaptcha as fallback
 
 @app.route('/solve-captcha', methods=['POST'])
 def solve_captcha_endpoint():

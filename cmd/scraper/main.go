@@ -95,26 +95,37 @@ func exportToJSON(sellerInfos []map[string]string, filename string, category str
 func main() {
 	// MachineryTrader category mapping
 	categoryMap := map[string]string{
-		"1015": "cranes",    // Mini Excavators
-		"1025": "dozer",     // Dozers/Bulldozers
-		"1026": "excavator", // Excavators
-		"1027": "loader",    // Loaders
-		"1028": "scraper",   // Scrapers
-		"1029": "grader",    // Graders
+		"1060": "wheel loaders", // Agriculture
+		"1015": "cranes",        // Mini Excavators
+		"1025": "dozer",         // Dozers/Bulldozers
+		"1026": "excavator",     // Excavators
+		"1027": "loader",        // Loaders
+		"1028": "scraper",       // Scrapers
+		"1029": "grader",        // Graders
 		// Add more as you discover them
 	}
 
 	// Dynamic page scraping - start from page 150 and continue until no more pages
-	baseURL := "https://www.machinerytrader.com/listings/search?Category=1015&page=" //stopped at 258
-	currentCategory := categoryMap["1015"]                                           // Extract category from URL
-	startPage := 329                                                                 // Start from where you left off (was 190)
+	baseURL := "https://www.machinerytrader.com/listings/search?Category=1060&page=" //stopped at 258
+	currentCategory := categoryMap["1060"]                                           // Extract category from URL
+	startPage := 1                                                                   // Start from where you left off (was 190)
 	maxPages := 400                                                                  // Total pages available
 	maxConsecutiveFailures := 5                                                      // Stop if we get 5 consecutive failures (more robust)
 
 	log.Printf("Starting dynamic multi-page OCR scraper from page %d", startPage)
-	log.Printf("🎯 Scraping category: %s (Category=1015)", currentCategory)
+	log.Printf("🎯 Scraping category: %s (Category=1060)", currentCategory)
 	log.Printf("🎯 Target: Process through page %d (total %d pages)", maxPages, maxPages)
-	log.Println("🔍 The browser will open visibly so you can manually solve any CAPTCHAs")
+	log.Println("🤖 CAPTCHA solver integration enabled - will automatically handle CAPTCHAs")
+	log.Println("🔍 Starting Python CAPTCHA solver service...")
+
+	// Start CAPTCHA solver service
+	if err := scraper.StartCAPTCHASolverService(); err != nil {
+		log.Printf("⚠️  CAPTCHA solver not available: %v", err)
+		log.Println("🔍 Falling back to manual CAPTCHA handling - browser will be visible")
+	} else {
+		log.Println("✅ CAPTCHA solver service is ready")
+	}
+
 	log.Println("💡 Will continue scraping until all pages are processed or consecutive failures occur...")
 
 	var allSellerInfo []map[string]string
@@ -145,8 +156,8 @@ func main() {
 		// Create job
 		job := models.Job{URL: targetURL}
 
-		// Take screenshot
-		imagePath := scraper.TakeScreenshotPlaywright(job.URL)
+		// Take screenshot with CAPTCHA handling
+		imagePath := scraper.TakeScreenshotPlaywrightWithCAPTCHA(job.URL)
 		if imagePath == "" {
 			log.Printf("❌ Failed to take screenshot for page %d (possibly no more pages or navigation issue)", currentPage)
 			consecutiveFailures++

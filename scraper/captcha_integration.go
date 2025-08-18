@@ -163,16 +163,18 @@ func TakeScreenshotPlaywrightWithCAPTCHA(targetURL string) string {
 }
 
 // containsCAPTCHA checks if a screenshot contains a CAPTCHA
-// This is a simple implementation - you could make it more sophisticated
 func containsCAPTCHA(screenshotPath string) bool {
-	// Simple keyword-based detection
-	// You could implement image-based detection here
+	detector := NewCAPTCHADetector()
 
-	// For now, return false - implement your detection logic
+	// Use multiple detection methods
+	if detector.DetectCAPTCHAInScreenshot(screenshotPath) {
+		return true
+	}
+
+	// You can add more sophisticated detection here:
+	// - OCR-based text detection
+	// - Computer vision analysis
+	// - ML-based classification
+
 	return false
-
-	// Example detection logic:
-	// - Check if screenshot contains reCAPTCHA elements
-	// - Look for common CAPTCHA patterns
-	// - Use OCR to detect CAPTCHA text
 }

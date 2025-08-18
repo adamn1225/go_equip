@@ -162,6 +162,40 @@ if master_log:
         if selected_state != 'All':
             filtered_df = filtered_df[filtered_df['state'] == selected_state]
         
+        # Calculate business potential scores (needed for all tabs)
+        def calculate_business_potential(row):
+            score = 0
+            
+            # More equipment types = higher potential
+            score += row['num_equipment_types'] * 20
+            
+            # Multiple sources = more established business
+            score += min(row['num_sources'], 5) * 10
+            
+            # Has phone number = easier to reach
+            if row['phone']:
+                score += 25
+            
+            # Has website = more professional operation
+            if row['website']:
+                score += 15
+            
+            # High-demand equipment bonuses
+            equipment_list = str(row['equipment_types']).lower()
+            if 'excavator' in equipment_list:
+                score += 15
+            if 'crane' in equipment_list:
+                score += 20  # Cranes are high-value for logistics
+            if 'dozer' in equipment_list:
+                score += 10
+            
+            return score
+        
+        filtered_df['business_potential'] = filtered_df.apply(calculate_business_potential, axis=1)
+        filtered_df['priority_level'] = pd.cut(filtered_df['business_potential'], 
+                                             bins=[0, 50, 80, 200], 
+                                             labels=['Low', 'Medium', 'High'])
+        
         # Main dashboard tabs
         tab1, tab2, tab3, tab4, tab5 = st.tabs([
             "📊 Market Overview", 
@@ -270,40 +304,6 @@ if master_log:
                 • ⚡ **MEDIUM (50-80 points)**: Good prospects - solid opportunities
                 • 📋 **LOW (0-50 points)**: Future follow-up - nurture relationships
                 """)
-            
-            # Calculate business potential scores
-            def calculate_business_potential(row):
-                score = 0
-                
-                # More equipment types = higher potential
-                score += row['num_equipment_types'] * 20
-                
-                # Multiple sources = more established business
-                score += min(row['num_sources'], 5) * 10
-                
-                # Has phone number = easier to reach
-                if row['phone']:
-                    score += 25
-                
-                # Has website = more professional operation
-                if row['website']:
-                    score += 15
-                
-                # High-demand equipment bonuses
-                equipment_list = str(row['equipment_types']).lower()
-                if 'excavator' in equipment_list:
-                    score += 15
-                if 'crane' in equipment_list:
-                    score += 20  # Cranes are high-value for logistics
-                if 'dozer' in equipment_list:
-                    score += 10
-                
-                return score
-            
-            filtered_df['business_potential'] = filtered_df.apply(calculate_business_potential, axis=1)
-            filtered_df['priority_level'] = pd.cut(filtered_df['business_potential'], 
-                                                 bins=[0, 50, 80, 200], 
-                                                 labels=['Low', 'Medium', 'High'])
             
             # Priority level summary
             priority_counts = filtered_df['priority_level'].value_counts()

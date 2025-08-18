@@ -2,16 +2,30 @@
 """
 Interactive Contact Database Dashboard
 Visual analytics and insights for equipment seller database
+Enhanced with Heavy Haulers Equipment Logistics sales intelligence
 """
 
 import json
+import os
 import pandas as pd
 import streamlit as st
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 import plotly.express as px
 import plotly.graph_objects as go
 from collections import defaultdict, Counter
 import re
 from datetime import datetime
+import openai
+
+# Configure Streamlit page
+st.set_page_config(
+    page_title="Equipment Seller Database Dashboard",
+    page_icon="🏗️",
+    layout="wide"
+)
 
 # Authentication function
 def check_password():
@@ -148,14 +162,18 @@ def main():
     if not check_password():
         return
     
-    st.set_page_config(
-        page_title="Equipment Seller Database Dashboard",
-        page_icon="🏗️",
-        layout="wide"
-    )
-    
-    st.title("🏗️ Equipment Seller Database Dashboard")
+    # Dashboard Mode Selector
+    st.markdown("# 🏗️ Equipment Seller Database Dashboard")
     st.markdown("**Authorized Access - Executive Analytics Portal**")
+    
+    # Mode selection
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        dashboard_mode = st.radio(
+            "Select Dashboard Mode:",
+            ["📊 General Analytics", "🚛 Heavy Haulers Sales Intelligence"],
+            horizontal=True
+        )
     
     # Add logout button
     if st.button("🚪 Logout", key="logout_btn"):
@@ -170,6 +188,15 @@ def main():
     if analyzer.df.empty:
         st.error("No data available. Please check your master database file.")
         return
+    
+    # Route to appropriate dashboard
+    if dashboard_mode == "🚛 Heavy Haulers Sales Intelligence":
+        heavy_haulers_dashboard(analyzer)
+    else:
+        general_analytics_dashboard(analyzer)
+
+def general_analytics_dashboard(analyzer):
+    """Original general analytics dashboard"""
     
     # Sidebar filters
     st.sidebar.header("🔍 Filters")
@@ -470,6 +497,507 @@ def main():
         st.write(f"• **Phone Coverage**: {with_phone/total_contacts*100:.1f}%")
         st.write(f"• **Email Coverage**: {with_email/total_contacts*100:.1f}%")
         st.write(f"• **Complete Locations**: {complete_location/total_contacts*100:.1f}%")
+
+def heavy_haulers_dashboard(analyzer):
+    """Heavy Haulers Equipment Logistics - Sales Intelligence Dashboard"""
+    
+    # Custom CSS for Heavy Haulers branding
+    st.markdown("""
+    <style>
+        .main-header {
+            background: linear-gradient(90deg, #1e3c72 0%, #2a5298 100%);
+            padding: 1rem;
+            border-radius: 10px;
+            margin-bottom: 2rem;
+        }
+        .metric-card {
+            background: white;
+            padding: 1rem;
+            border-radius: 10px;
+            border-left: 4px solid #2a5298;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .opportunity-high { border-left-color: #28a745; }
+        .opportunity-medium { border-left-color: #ffc107; }
+        .opportunity-low { border-left-color: #dc3545; }
+        .stButton > button {
+            background: linear-gradient(90deg, #1e3c72 0%, #2a5298 100%);
+            color: white;
+            border: none;
+            border-radius: 5px;
+            padding: 0.5rem 1rem;
+            font-weight: bold;
+        }
+    </style>
+    """, unsafe_allow_html=True)
+
+    # Header
+    st.markdown("""
+    <div class="main-header">
+        <h1 style="color: white; margin: 0;">🚛 Heavy Haulers Equipment Logistics</h1>
+        <p style="color: #e8f4fd; margin: 0; font-size: 1.2em;">Sales Intelligence Dashboard - Equipment Dealer Analytics</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Process dealer data for Heavy Haulers
+    def process_dealer_data_heavy_haulers():
+        records = []
+        for _, row in analyzer.df.iterrows():
+            # Skip contacts with "Unknown" names for better data quality
+            if row['seller_company'] == 'Unknown' or str(row['seller_company']).strip() == '':
+                continue
+                
+            # Extract equipment categories from the existing categories field
+            equipment_types = []
+            if pd.notna(row['categories']):
+                categories = str(row['categories']).lower().split(',')
+                for category in categories:
+                    category = category.strip()
+                    if 'excavator' in category:
+                        equipment_types.append('Excavator')
+                    elif 'crane' in category:
+                        equipment_types.append('Crane')
+                    elif 'dozer' in category or 'bulldozer' in category:
+                        equipment_types.append('Dozer')
+                    elif category:
+                        equipment_types.append(category.title())
+            
+            # Remove duplicates and create string
+            equipment_types = list(set(equipment_types))
+            equipment_str = ', '.join(equipment_types) if equipment_types else 'General'
+            
+            records.append({
+                'contact_id': row['contact_id'],
+                'name': row['seller_company'],
+                'phone': row['primary_phone'],
+                'location': row['primary_location'],
+                'state': row['state'],
+                'website': row.get('website', ''),
+                'equipment_types': equipment_str,
+                'num_equipment_types': len(equipment_types),
+                'num_sources': row.get('num_sources', 1),
+                'total_listings': row['total_listings']
+            })
+        
+        return pd.DataFrame(records)
+    
+    df = process_dealer_data_heavy_haulers()
+    
+    if df.empty:
+        st.error("No Heavy Haulers data available.")
+        return
+        
+    # Sidebar filters
+    st.sidebar.header("🎯 Target Market Filters")
+    
+    # Equipment type filter
+    equipment_options = ['All'] + sorted(df['equipment_types'].str.split(', ').explode().unique().tolist())
+    selected_equipment = st.sidebar.selectbox("Equipment Type", equipment_options, key="hh_equipment")
+    
+    # State filter
+    state_options = ['All'] + sorted([s for s in df['state'].unique() if s])
+    selected_state = st.sidebar.selectbox("State", state_options, key="hh_state")
+    
+    # Filter data
+    filtered_df = df.copy()
+    if selected_equipment != 'All':
+        filtered_df = filtered_df[filtered_df['equipment_types'].str.contains(selected_equipment, na=False)]
+    if selected_state != 'All':
+        filtered_df = filtered_df[filtered_df['state'] == selected_state]
+    
+    # Main dashboard tabs
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+        "📊 Market Overview", 
+        "🎯 Sales Targets", 
+        "📍 Geographic Analysis", 
+        "🤖 AI Insights", 
+        "📋 Contact Management"
+    ])
+    
+    with tab1:
+        st.header("Market Overview")
+        
+        # Key metrics
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            st.markdown("""
+            <div class="metric-card">
+                <h3 style="color: #2a5298; margin: 0;">Total Dealers</h3>
+                <h2 style="color: #1e3c72; margin: 0;">{:,}</h2>
+                <p style="color: #6c757d; margin: 0;">Potential Customers</p>
+            </div>
+            """.format(len(filtered_df)), unsafe_allow_html=True)
+        
+        with col2:
+            avg_equipment = filtered_df['num_equipment_types'].mean()
+            st.markdown("""
+            <div class="metric-card">
+                <h3 style="color: #2a5298; margin: 0;">Avg Equipment Types</h3>
+                <h2 style="color: #1e3c72; margin: 0;">{:.1f}</h2>
+                <p style="color: #6c757d; margin: 0;">Per Dealer</p>
+            </div>
+            """.format(avg_equipment), unsafe_allow_html=True)
+        
+        with col3:
+            states_count = len(filtered_df['state'].unique())
+            st.markdown("""
+            <div class="metric-card">
+                <h3 style="color: #2a5298; margin: 0;">Geographic Reach</h3>
+                <h2 style="color: #1e3c72; margin: 0;">{}</h2>
+                <p style="color: #6c757d; margin: 0;">States Covered</p>
+            </div>
+            """.format(states_count), unsafe_allow_html=True)
+        
+        with col4:
+            has_phone = (filtered_df['phone'] != '').sum()
+            phone_rate = (has_phone / len(filtered_df) * 100) if len(filtered_df) > 0 else 0
+            st.markdown("""
+            <div class="metric-card">
+                <h3 style="color: #2a5298; margin: 0;">Contact Rate</h3>
+                <h2 style="color: #1e3c72; margin: 0;">{:.0f}%</h2>
+                <p style="color: #6c757d; margin: 0;">Have Phone Numbers</p>
+            </div>
+            """.format(phone_rate), unsafe_allow_html=True)
+        
+        st.markdown("<br>", unsafe_allow_html=True)
+        
+        # Charts
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.subheader("Equipment Type Distribution")
+            equipment_counts = Counter()
+            for equipment_list in filtered_df['equipment_types']:
+                if pd.notna(equipment_list):
+                    for equipment in str(equipment_list).split(', '):
+                        equipment_counts[equipment.strip()] += 1
+            
+            if equipment_counts:
+                equipment_df = pd.DataFrame(list(equipment_counts.items()), 
+                                         columns=['Equipment', 'Count'])
+                fig = px.pie(equipment_df, values='Count', names='Equipment', 
+                            title="Market Share by Equipment Type")
+                fig.update_traces(textposition='inside', textinfo='percent+label')
+                st.plotly_chart(fig, use_container_width=True, key="hh_equipment_pie_chart")
+        
+        with col2:
+            st.subheader("Top States by Dealer Count")
+            state_counts = filtered_df['state'].value_counts().head(10)
+            if not state_counts.empty:
+                fig = px.bar(x=state_counts.values, y=state_counts.index, 
+                            orientation='h', title="Geographic Distribution")
+                fig.update_layout(yaxis_title="State", xaxis_title="Dealer Count")
+                st.plotly_chart(fig, use_container_width=True, key="hh_states_bar_chart")
+    
+    with tab2:
+        st.header("🎯 Priority Sales Targets")
+        st.markdown("**Dealers ranked by business potential for Heavy Haulers**")
+        
+        # Priority scoring explanation
+        with st.expander("📊 Priority Scoring System", expanded=False):
+            st.markdown("""
+            **How we calculate Business Potential Score:**
+            
+            • **Equipment Types** (+20 per type): More variety = more transportation needs
+            • **Multiple Sources** (+10 per source, max 50): Established dealers with multiple listings  
+            • **Contact Info** (+25): Phone number available for direct outreach
+            • **Professional Presence** (+15): Has website - more established business
+            • **Equipment Bonuses**:
+              - 🏗️ Cranes: +20 (high-value specialty transport)
+              - 🚜 Excavators: +15 (consistent volume opportunities)  
+              - 🚧 Dozers: +10 (regular transport needs)
+            
+            **Priority Ranges:**
+            • 🔥 **HIGH (80-200+ points)**: Premium targets - call first!
+            • ⚡ **MEDIUM (50-80 points)**: Good prospects - solid opportunities
+            • 📋 **LOW (0-50 points)**: Future follow-up - nurture relationships
+            """)
+        
+        # Calculate business potential scores
+        def calculate_business_potential(row):
+            score = 0
+            
+            # More equipment types = higher potential
+            score += row['num_equipment_types'] * 20
+            
+            # Multiple sources = more established business
+            score += min(row['num_sources'], 5) * 10
+            
+            # Has phone number = easier to reach
+            if row['phone']:
+                score += 25
+            
+            # Has website = more professional operation
+            if row['website']:
+                score += 15
+            
+            # High-demand equipment bonuses
+            equipment_list = str(row['equipment_types']).lower()
+            if 'excavator' in equipment_list:
+                score += 15
+            if 'crane' in equipment_list:
+                score += 20  # Cranes are high-value for logistics
+            if 'dozer' in equipment_list:
+                score += 10
+            
+            return score
+        
+        filtered_df['business_potential'] = filtered_df.apply(calculate_business_potential, axis=1)
+        filtered_df['priority_level'] = pd.cut(filtered_df['business_potential'], 
+                                             bins=[0, 50, 80, 200], 
+                                             labels=['Low', 'Medium', 'High'])
+        
+        # Priority level summary
+        priority_counts = filtered_df['priority_level'].value_counts()
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.markdown("""
+            <div class="metric-card opportunity-high">
+                <h3 style="color: #1e5631; font-weight: bold;">🔥 High Priority</h3>
+                <h2 style="color: #1e3c72; font-size: 2.5rem;">{}</h2>
+                <p style="color: #495057; font-weight: 500;">Premium Targets</p>
+            </div>
+            """.format(priority_counts.get('High', 0)), unsafe_allow_html=True)
+        
+        with col2:
+            st.markdown("""
+            <div class="metric-card opportunity-medium">
+                <h3 style="color: #b8860b; font-weight: bold;">⚡ Medium Priority</h3>
+                <h2 style="color: #1e3c72; font-size: 2.5rem;">{}</h2>
+                <p style="color: #495057; font-weight: 500;">Good Prospects</p>
+            </div>
+            """.format(priority_counts.get('Medium', 0)), unsafe_allow_html=True)
+        
+        with col3:
+            st.markdown("""
+            <div class="metric-card opportunity-low">
+                <h3 style="color: #c53030; font-weight: bold;">📋 Low Priority</h3>
+                <h2 style="color: #1e3c72; font-size: 2.5rem;">{}</h2>
+                <p style="color: #495057; font-weight: 500;">Future Follow-up</p>
+            </div>
+            """.format(priority_counts.get('Low', 0)), unsafe_allow_html=True)
+        
+        # Top prospects table
+        st.subheader("🎯 Top Sales Prospects")
+        top_prospects = filtered_df.nlargest(20, 'business_potential')[
+            ['name', 'location', 'phone', 'equipment_types', 'business_potential', 'priority_level']
+        ].copy()
+        
+        # Add action buttons and format for display
+        top_prospects['Score'] = top_prospects['business_potential'].round(0).astype(int)
+        
+        # Display with color coding for priority levels
+        for idx, row in top_prospects.iterrows():
+            priority = row['priority_level']
+            score = row['Score']
+            
+            # Color coding based on priority with better contrast
+            if priority == 'High':
+                priority_color = "🔥 **HIGH PRIORITY**"
+                card_color = "#1e5631"  # Dark green
+                text_color = "#ffffff"   # White text
+            elif priority == 'Medium':
+                priority_color = "⚡ **MEDIUM PRIORITY**"
+                card_color = "#b8860b"   # Dark gold
+                text_color = "#ffffff"   # White text
+            else:
+                priority_color = "📋 **LOW PRIORITY**"
+                card_color = "#2c3e50"   # Dark blue-gray
+                text_color = "#ffffff"   # White text
+            
+            with st.container():
+                st.markdown(f"""
+                <div style="background-color: {card_color}; color: {text_color}; padding: 15px; border-radius: 8px; margin: 8px 0; border-left: 4px solid #ffffff;">
+                    <div style="font-size: 1.1em; font-weight: bold; margin-bottom: 8px;">
+                        {row['name']} | {priority_color} | Score: {score}
+                    </div>
+                    <div style="margin: 4px 0;">📍 <strong>Location:</strong> {row['location']}</div>
+                    <div style="margin: 4px 0;">📞 <strong>Phone:</strong> {row['phone']}</div>
+                    <div style="margin: 4px 0;">🚛 <strong>Equipment:</strong> {row['equipment_types']}</div>
+                </div>
+                """, unsafe_allow_html=True)
+        
+        # Export functionality
+        st.subheader("📥 Export Sales Lists")
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            if st.button("Export High Priority List", key="hh_export_high"):
+                high_priority = filtered_df[filtered_df['priority_level'] == 'High']
+                csv = high_priority[['name', 'phone', 'location', 'equipment_types', 'website']].to_csv(index=False)
+                st.download_button("Download CSV", csv, "heavy_haulers_high_priority.csv", "text/csv", key="hh_download_high")
+        
+        with col2:
+            if st.button("Export All Prospects", key="hh_export_all"):
+                csv = filtered_df[['name', 'phone', 'location', 'equipment_types', 'business_potential']].to_csv(index=False)
+                st.download_button("Download CSV", csv, "heavy_haulers_all_prospects.csv", "text/csv", key="hh_download_all")
+    
+    with tab3:
+        st.header("📍 Geographic Market Analysis")
+        st.markdown("**Identify underserved markets and expansion opportunities**")
+        
+        # State analysis with basic geographic distribution
+        state_analysis = filtered_df.groupby('state').agg({
+            'contact_id': 'count',
+            'num_equipment_types': 'mean',
+            'business_potential': 'mean'
+        }).round(2)
+        state_analysis.columns = ['Dealer_Count', 'Avg_Equipment_Types', 'Avg_Business_Potential']
+        state_analysis = state_analysis.sort_values('Dealer_Count', ascending=False).reset_index()
+        
+        # Geographic distribution bar chart
+        st.subheader("📊 Dealer Distribution by State")
+        if not state_analysis.empty:
+            top_15_states = state_analysis.head(15)
+            fig = px.bar(
+                top_15_states,
+                x='Dealer_Count',
+                y='state',
+                orientation='h',
+                title="Top 15 States by Dealer Count",
+                labels={'Dealer_Count': 'Number of Equipment Dealers', 'state': 'State'},
+                color='Avg_Business_Potential',
+                color_continuous_scale='RdYlBu_r'
+            )
+            fig.update_layout(
+                yaxis={'categoryorder': 'total ascending'},
+                height=500
+            )
+            st.plotly_chart(fig, use_container_width=True, key="hh_geographic_chart")
+    
+    with tab4:
+        st.header("🤖 AI-Powered Business Insights")
+        st.markdown("**Get intelligent analysis of your equipment dealer market**")
+        
+        # OpenAI configuration
+        openai_api_key = st.text_input("OpenAI API Key", type="password", 
+                                     value=os.getenv("OPENAI_API_KEY", ""), key="hh_openai_key")
+        
+        if openai_api_key:
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                if st.button("🎯 Generate Cold Outreach Strategy", key="hh_ai_strategy"):
+                    # Generate AI insights for Heavy Haulers
+                    st.info("AI analysis would be generated here using the OpenAI API...")
+            
+            with col2:
+                if st.button("📊 Market Analysis Report", key="hh_ai_report"):
+                    st.info("Market analysis report would be generated here...")
+        
+        # Pre-built insights (no API usage)
+        st.subheader("📊 Quick Insights (No API Usage)")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("### 🎯 Cold Outreach Recommendations")
+            
+            crane_dealers = len(filtered_df[filtered_df['equipment_types'].str.contains('Crane', na=False)])
+            excavator_dealers = len(filtered_df[filtered_df['equipment_types'].str.contains('Excavator', na=False)])
+            
+            recommendations = f"""
+            **Priority Equipment Types for Heavy Haulers:**
+            
+            🏗️ **Crane Dealers ({crane_dealers})**: Premium logistics needs
+            - High-value equipment requiring specialized transport
+            - Often need permits and route planning
+            - Excellent upsell opportunities for white-glove service
+            
+            🚜 **Excavator Dealers ({excavator_dealers})**: Volume opportunities  
+            - Consistent transportation needs
+            - Multiple units per shipment common
+            - Good for building recurring relationships
+            
+            **Outreach Tips:**
+            - Lead with cost savings and reliability
+            - Mention permit handling and route optimization
+            - Offer free shipping quotes as conversation starter
+            """
+            
+            st.markdown(recommendations)
+        
+        with col2:
+            st.markdown("### 📍 Geographic Strategy")
+            
+            top_3_states = state_analysis.head(3)
+            geographic_strategy = f"""
+            **Top Target States:**
+            
+            """
+            
+            for idx, row in top_3_states.iterrows():
+                geographic_strategy += f"""
+            **{row['state']}**: {row['Dealer_Count']} dealers
+            - Avg {row['Avg_Equipment_Types']:.1f} equipment types per dealer
+            - Business potential score: {row['Avg_Business_Potential']:.1f}
+            
+            """
+            
+            geographic_strategy += """
+            **Expansion Opportunities:**
+            - States with <10 dealers but high equipment diversity
+            - Markets near major shipping routes
+            - Areas with growing construction activity
+            """
+            
+            st.markdown(geographic_strategy)
+    
+    with tab5:
+        st.header("📋 Contact Management")
+        st.markdown("**Manage and export your sales prospect database**")
+        
+        # Search and filter
+        col1, col2 = st.columns(2)
+        with col1:
+            search_term = st.text_input("🔍 Search dealers", placeholder="Company name, location, or equipment type", key="hh_search")
+        with col2:
+            show_only_priority = st.checkbox("Show only high priority prospects", key="hh_priority_filter")
+        
+        # Apply filters
+        display_df = filtered_df.copy()
+        if search_term:
+            mask = (
+                display_df['name'].str.contains(search_term, case=False, na=False) |
+                display_df['location'].str.contains(search_term, case=False, na=False) |
+                display_df['equipment_types'].str.contains(search_term, case=False, na=False)
+            )
+            display_df = display_df[mask]
+        
+        if show_only_priority:
+            display_df = display_df[display_df['priority_level'] == 'High']
+        
+        # Contact table
+        st.subheader(f"📞 Contact Database ({len(display_df)} dealers)")
+        
+        contact_display = display_df[[
+            'name', 'phone', 'location', 'equipment_types', 
+            'business_potential', 'priority_level', 'website'
+        ]].copy()
+        
+        # Display contacts
+        st.dataframe(
+            contact_display,
+            use_container_width=True,
+            height=400
+        )
+        
+        # Bulk actions
+        st.subheader("📤 Export Options")
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            if st.button("📋 Export Current View", key="hh_export_current"):
+                csv = display_df[['name', 'phone', 'location', 'equipment_types', 'business_potential']].to_csv(index=False)
+                st.download_button("Download", csv, f"heavy_haulers_filtered_{datetime.now().strftime('%Y%m%d')}.csv", "text/csv", key="hh_download_current")
+        
+        with col2:
+            if st.button("📞 Phone List Only", key="hh_phone_only"):
+                phone_df = display_df[display_df['phone'] != ''][['name', 'phone', 'location']]
+                csv = phone_df.to_csv(index=False)
+                st.download_button("Download", csv, f"heavy_haulers_phones_{datetime.now().strftime('%Y%m%d')}.csv", "text/csv", key="hh_download_phones")
 
 if __name__ == "__main__":
     main()

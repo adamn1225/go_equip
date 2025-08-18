@@ -115,18 +115,12 @@ func main() {
 	log.Printf("Starting dynamic multi-page OCR scraper from page %d", startPage)
 	log.Printf("🎯 Scraping category: %s (Category=1060)", currentCategory)
 	log.Printf("🎯 Target: Process through page %d (total %d pages)", maxPages, maxPages)
-	log.Println("🤖 CAPTCHA solver integration enabled - will automatically handle CAPTCHAs")
-	log.Println("🔍 Starting Python CAPTCHA solver service...")
-
-	// Start CAPTCHA solver service
-	if err := scraper.StartCAPTCHASolverService(); err != nil {
-		log.Printf("⚠️  CAPTCHA solver not available: %v", err)
-		log.Println("🔍 Falling back to manual CAPTCHA handling - browser will be visible")
-	} else {
-		log.Println("✅ CAPTCHA solver service is ready")
-	}
-
+	log.Println("🔄 Proxy rotation enabled - each page will use a different proxy")
 	log.Println("💡 Will continue scraping until all pages are processed or consecutive failures occur...")
+
+	// Initialize proxy stats tracking
+	proxySuccessCount := 0
+	proxyFailureCount := 0
 
 	var allSellerInfo []map[string]string
 	consecutiveFailures := 0
@@ -156,10 +150,12 @@ func main() {
 		// Create job
 		job := models.Job{URL: targetURL}
 
-		// Take screenshot with CAPTCHA handling
-		imagePath := scraper.TakeScreenshotPlaywrightWithCAPTCHA(job.URL)
+		// Take screenshot with proxy rotation (no CAPTCHA handling)
+		log.Printf("🔄 Using proxy rotation for page %d...", currentPage)
+		imagePath := scraper.TakeScreenshot(job.URL)
 		if imagePath == "" {
-			log.Printf("❌ Failed to take screenshot for page %d (possibly no more pages or navigation issue)", currentPage)
+			log.Printf("❌ Failed to take screenshot for page %d (possibly no more pages or proxy issue)", currentPage)
+			proxyFailureCount++
 			consecutiveFailures++
 			if consecutiveFailures >= maxConsecutiveFailures {
 				log.Printf("🛑 Stopping: %d consecutive screenshot failures - likely reached end of available pages", maxConsecutiveFailures)
@@ -170,6 +166,7 @@ func main() {
 		}
 
 		// Reset consecutive failures on successful screenshot
+		proxySuccessCount++
 		consecutiveFailures = 0
 
 		// Update job with image path
@@ -206,8 +203,9 @@ func main() {
 
 		// Add delay between pages to be respectful
 		if (currentPage-startPage+1)%5 == 0 {
-			log.Printf("📊 Progress: Page %d | Total contacts: %d | Rate: %.1f contacts/page",
-				currentPage, len(allSellerInfo), float64(len(allSellerInfo))/float64(currentPage-startPage+1))
+			successRate := float64(proxySuccessCount) / float64(proxySuccessCount+proxyFailureCount) * 100
+			log.Printf("📊 Progress: Page %d | Total contacts: %d | Rate: %.1f contacts/page | Proxy success: %.1f%%",
+				currentPage, len(allSellerInfo), float64(len(allSellerInfo))/float64(currentPage-startPage+1), successRate)
 		}
 		time.Sleep(3 * time.Second)
 
@@ -223,6 +221,13 @@ func main() {
 	log.Printf("\n🎉 Multi-page scraping completed!")
 	log.Printf("📊 Total pages processed: %d", currentPage-startPage)
 	log.Printf("📝 Total seller contacts found: %d", len(allSellerInfo))
+
+	// Proxy performance summary
+	if proxySuccessCount+proxyFailureCount > 0 {
+		successRate := float64(proxySuccessCount) / float64(proxySuccessCount+proxyFailureCount) * 100
+		log.Printf("🔄 Proxy Performance: %d successful, %d failed (%.1f%% success rate)",
+			proxySuccessCount, proxyFailureCount, successRate)
+	}
 
 	if currentPage > maxPages {
 		log.Printf("🔚 Reason: Reached safety limit of %d pages", maxPages)

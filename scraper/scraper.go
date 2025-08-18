@@ -18,8 +18,11 @@ import (
 )
 
 type ProxyManager struct {
-	proxies []string
-	current int
+	proxies     []string
+	current     int
+	retryCount  map[string]int
+	maxRetries  int
+	usedProxies map[string]time.Time
 }
 
 func NewProxyManager() (*ProxyManager, error) {
@@ -42,8 +45,11 @@ func NewProxyManager() (*ProxyManager, error) {
 	}
 
 	return &ProxyManager{
-		proxies: proxies,
-		current: 0,
+		proxies:     proxies,
+		current:     0,
+		retryCount:  make(map[string]int),
+		maxRetries:  3,
+		usedProxies: make(map[string]time.Time),
 	}, nil
 }
 
@@ -118,10 +124,53 @@ func (pm *ProxyManager) GetNextProxy() string {
 		return ""
 	}
 
-	// Randomize proxy selection
-	proxy := pm.proxies[rand.Intn(len(pm.proxies))]
-	pm.current = (pm.current + 1) % len(pm.proxies)
+	// Find a proxy that hasn't been used recently or has low retry count
+	now := time.Now()
+	for attempts := 0; attempts < len(pm.proxies); attempts++ {
+		pm.current = (pm.current + 1) % len(pm.proxies)
+		proxy := pm.proxies[pm.current]
+
+		// Check if proxy was used recently (within 30 seconds)
+		if lastUsed, exists := pm.usedProxies[proxy]; exists {
+			if now.Sub(lastUsed) < 30*time.Second {
+				continue // Skip recently used proxy
+			}
+		}
+
+		// Check retry count
+		if pm.retryCount[proxy] >= pm.maxRetries {
+			continue // Skip proxy that has exceeded retry limit
+		}
+
+		// Mark proxy as used
+		pm.usedProxies[proxy] = now
+		log.Printf("🔄 Selected proxy: %s (usage #%d)", proxy, pm.retryCount[proxy]+1)
+		return proxy
+	}
+
+	// If all proxies are recently used or maxed out, reset and use any proxy
+	log.Printf("⚠️ All proxies recently used, resetting usage tracking")
+	pm.usedProxies = make(map[string]time.Time)
+	pm.retryCount = make(map[string]int)
+
+	// Return first available proxy
+	proxy := pm.proxies[pm.current]
+	pm.usedProxies[proxy] = now
 	return proxy
+}
+
+func (pm *ProxyManager) MarkProxyFailed(proxy string) {
+	pm.retryCount[proxy]++
+	log.Printf("❌ Proxy failed: %s (failure count: %d/%d)", proxy, pm.retryCount[proxy], pm.maxRetries)
+}
+
+func (pm *ProxyManager) GetProxyStats() map[string]interface{} {
+	return map[string]interface{}{
+		"total_proxies":    len(pm.proxies),
+		"active_proxies":   len(pm.proxies) - len(pm.retryCount),
+		"failed_proxies":   len(pm.retryCount),
+		"current_rotation": pm.current,
+	}
 }
 
 // TakeScreenshot takes a screenshot of the given URL using Rod with stealth mode and proxy rotation
@@ -141,21 +190,29 @@ func TakeScreenshot(targetURL string) string {
 		Set("disable-features", "VizDisplayCompositor")
 
 	// Add proxy if available
+	var currentProxy string
 	if proxyManager != nil {
 		proxy := proxyManager.GetNextProxy()
 		if proxy != "" {
+			currentProxy = proxy
 			// Parse the proxy URL to get components
 			proxyURL, err := url.Parse(proxy)
 			if err == nil {
 				// Set proxy server without auth for now
 				proxyServer := fmt.Sprintf("%s:%s", proxyURL.Hostname(), proxyURL.Port())
 				l = l.Set("proxy-server", proxyServer)
-				log.Printf("Using proxy server: %s", proxyServer)
+				log.Printf("🔄 Using proxy: %s (Full: %s)", proxyServer, proxy)
 
 				// Note: Proxy authentication with username/password requires additional setup
 				// For now, we'll use the proxy without auth
+			} else {
+				log.Printf("❌ Error parsing proxy URL: %v", err)
 			}
+		} else {
+			log.Printf("⚠️  No proxy available from manager")
 		}
+	} else {
+		log.Printf("🚫 No proxy manager initialized - using direct connection")
 	}
 
 	// Launch browser
@@ -179,7 +236,11 @@ func TakeScreenshot(targetURL string) string {
 	time.Sleep(time.Duration(rand.Intn(3)+1) * time.Second)
 
 	// Navigate to the target URL
-	log.Printf("Navigating to: %s", targetURL)
+	if currentProxy != "" {
+		log.Printf("🌐 Navigating to: %s (via proxy: %s)", targetURL, currentProxy)
+	} else {
+		log.Printf("🌐 Navigating to: %s (direct connection)", targetURL)
+	}
 	page.MustNavigate(targetURL)
 
 	// Wait for page to load
@@ -214,6 +275,10 @@ func TakeScreenshot(targetURL string) string {
 		return ""
 	}
 
-	log.Printf("Screenshot saved: %s", filepath)
+	if currentProxy != "" {
+		log.Printf("📸 Screenshot saved: %s (via proxy: %s)", filepath, currentProxy)
+	} else {
+		log.Printf("📸 Screenshot saved: %s (direct connection)", filepath)
+	}
 	return filepath
 }

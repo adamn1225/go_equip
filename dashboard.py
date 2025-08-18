@@ -866,6 +866,49 @@ def heavy_haulers_dashboard(analyzer):
                 height=500
             )
             st.plotly_chart(fig, use_container_width=True, key="hh_geographic_chart")
+        
+        # State abbreviation mapping for choropleth
+        state_abbr_map = {
+            'Alabama': 'AL', 'Alaska': 'AK', 'Arizona': 'AZ', 'Arkansas': 'AR', 'California': 'CA',
+            'Colorado': 'CO', 'Connecticut': 'CT', 'Delaware': 'DE', 'Florida': 'FL', 'Georgia': 'GA',
+            'Hawaii': 'HI', 'Idaho': 'ID', 'Illinois': 'IL', 'Indiana': 'IN', 'Iowa': 'IA',
+            'Kansas': 'KS', 'Kentucky': 'KY', 'Louisiana': 'LA', 'Maine': 'ME', 'Maryland': 'MD',
+            'Massachusetts': 'MA', 'Michigan': 'MI', 'Minnesota': 'MN', 'Mississippi': 'MS', 'Missouri': 'MO',
+            'Montana': 'MT', 'Nebraska': 'NE', 'Nevada': 'NV', 'New Hampshire': 'NH', 'New Jersey': 'NJ',
+            'New Mexico': 'NM', 'New York': 'NY', 'North Carolina': 'NC', 'North Dakota': 'ND', 'Ohio': 'OH',
+            'Oklahoma': 'OK', 'Oregon': 'OR', 'Pennsylvania': 'PA', 'Rhode Island': 'RI', 'South Carolina': 'SC',
+            'South Dakota': 'SD', 'Tennessee': 'TN', 'Texas': 'TX', 'Utah': 'UT', 'Vermont': 'VT',
+            'Virginia': 'VA', 'Washington': 'WA', 'West Virginia': 'WV', 'Wisconsin': 'WI', 'Wyoming': 'WY'
+        }
+        
+        # US Business Potential Heatmap
+        st.subheader("🗺️ US Business Potential Heatmap")
+        if not state_analysis.empty:
+            # Add state abbreviations for choropleth
+            state_analysis_valid = state_analysis[state_analysis['state'].isin(state_abbr_map.keys())].copy()
+            if not state_analysis_valid.empty:
+                state_analysis_valid['state_code'] = state_analysis_valid['state'].map(state_abbr_map)
+                
+                # Create choropleth map
+                fig_map = go.Figure(data=go.Choropleth(
+                    locations=state_analysis_valid['state_code'],
+                    z=state_analysis_valid['Avg_Business_Potential'],
+                    locationmode='USA-states',
+                    colorscale='RdYlBu_r',
+                    colorbar_title="Average Business Potential Score",
+                    text=state_analysis_valid['state'],
+                    hovertemplate='<b>%{text}</b><br>Dealers: %{customdata[0]}<br>Avg Business Potential: %{z:.1f}<br>Avg Equipment Types: %{customdata[1]:.1f}<extra></extra>',
+                    customdata=state_analysis_valid[['Dealer_Count', 'Avg_Equipment_Types']].values
+                ))
+                
+                fig_map.update_layout(
+                    title_text="Heavy Haulers Business Potential by State",
+                    geo_scope='usa',
+                    height=500,
+                    title_x=0.5
+                )
+                
+                st.plotly_chart(fig_map, use_container_width=True, key="hh_choropleth_map")
     
     with tab4:
         st.header("🤖 AI-Powered Business Insights")

@@ -169,14 +169,157 @@ def main():
     st.markdown("# 🏗️ Equipment Seller Database Dashboard")
     st.markdown("**Authorized Access - Executive Analytics Portal**")
     
-    # Mode selection
-    col1, col2, col3 = st.columns([1, 2, 1])
+    # Creative Mode Selection UI
+    st.markdown("### Choose Your Analytics Experience")
+    
+    # Add custom CSS for hover effects
+    st.markdown("""
+    <style>
+    .dashboard-card {
+        border-radius: 15px;
+        padding: 20px;
+        text-align: center;
+        margin: 10px 0;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        transition: all 0.3s ease;
+        cursor: pointer;
+    }
+    
+    .dashboard-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 8px 16px rgba(0,0,0,0.2);
+    }
+    
+    .general-card {
+        border: 2px solid #1f77b4;
+        background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+    }
+    
+    .heavy-card {
+        border: 2px solid #ff6b35;
+        background: linear-gradient(135deg, #fff3e0 0%, #ffcc02 100%);
+    }
+    
+    .card-title {
+        margin: 0 0 15px 0;
+        font-weight: bold;
+    }
+    
+    .card-description {
+        margin: 10px 0 15px 0;
+        line-height: 1.4;
+    }
+    
+    .card-features {
+        font-size: 14px;
+        line-height: 1.6;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
+    # Create two attractive columns for mode selection
+    col1, col2 = st.columns(2, gap="large")
+    
+    # Enhanced CSS for beautiful blue buttons (blue-500 = #3b82f6)
+    st.markdown("""
+    <style>
+    /* Override Streamlit's default button styles */
+    .stButton > button {
+        background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%) !important;
+        color: white !important;
+        border: none !important;
+        border-radius: 10px !important;
+        font-weight: 600 !important;
+        font-size: 1.1em !important;
+        padding: 0.75em 1.5em !important;
+        margin-top: 15px !important;
+        transition: all 0.3s ease !important;
+        box-shadow: 0 4px 8px rgba(59, 130, 246, 0.3) !important;
+        width: 100% !important;
+    }
+    
+    .stButton > button:hover {
+        background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%) !important;
+        transform: translateY(-2px) !important;
+        box-shadow: 0 6px 12px rgba(59, 130, 246, 0.4) !important;
+    }
+    
+    .stButton > button:active {
+        transform: translateY(0) !important;
+        box-shadow: 0 2px 4px rgba(59, 130, 246, 0.3) !important;
+    }
+    
+    /* Style for selected state */
+    .stButton > button[data-baseweb="button"][kind="primary"] {
+        background: linear-gradient(135deg, #1d4ed8 0%, #1e40af 100%) !important;
+        box-shadow: 0 6px 12px rgba(59, 130, 246, 0.5) !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
+    with col1:
+        # General Analytics Card
+        with st.container():
+            st.markdown("""
+            <div class="dashboard-card general-card">
+                <h2 style="color: #1565c0;" class="card-title">📊 General Analytics</h2>
+                <p style="color: #424242;" class="card-description">
+                    Comprehensive database insights, contact analysis, 
+                    and business intelligence across all equipment categories
+                </p>
+                <div style="color: #666;" class="card-features">
+                    ✓ Contact Database Overview<br>
+                    ✓ Geographic Distribution<br>
+                    ✓ Category Analysis<br>
+                    ✓ Source Performance
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            general_selected = st.button(
+                "🚀 Launch General Analytics", 
+                key="general_btn",
+                use_container_width=True,
+                type="primary" if st.session_state.get('dashboard_mode') == 'general' else "secondary"
+            )
+    
     with col2:
-        dashboard_mode = st.radio(
-            "Select Dashboard Mode:",
-            ["📊 General Analytics", "🚛 Heavy Haulers Sales Intelligence"],
-            horizontal=True
-        )
+        # Heavy Haulers Card  
+        with st.container():
+            st.markdown("""
+            <div class="dashboard-card heavy-card">
+                <h2 style="color: #e65100;" class="card-title">🚛 Heavy Haulers Intelligence</h2>
+                <p style="color: #424242;" class="card-description">
+                    Advanced sales intelligence focused on high-value 
+                    equipment dealers with AI-powered insights
+                </p>
+                <div style="color: #666;" class="card-features">
+                    ✓ Business Potential Scoring<br>
+                    ✓ AI-Powered Company Analysis<br>
+                    ✓ Priority Lead Identification<br>
+                    ✓ Geographic Heat Mapping
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            heavy_selected = st.button(
+                "🎯 Launch Heavy Haulers Intel", 
+                key="heavy_btn",
+                use_container_width=True,
+                type="primary" if st.session_state.get('dashboard_mode') == 'heavy' else "secondary"
+            )
+    
+    # Handle mode selection
+    if general_selected:
+        st.session_state['dashboard_mode'] = 'general'
+    elif heavy_selected:
+        st.session_state['dashboard_mode'] = 'heavy'
+    
+    # Set default if no selection
+    if 'dashboard_mode' not in st.session_state:
+        st.session_state['dashboard_mode'] = 'general'
+    
+    dashboard_mode = st.session_state['dashboard_mode']
     
     # Add logout button
     if st.button("🚪 Logout", key="logout_btn"):
@@ -193,7 +336,7 @@ def main():
         return
     
     # Route to appropriate dashboard
-    if dashboard_mode == "🚛 Heavy Haulers Sales Intelligence":
+    if dashboard_mode == "heavy":
         heavy_haulers_dashboard(analyzer)
     else:
         general_analytics_dashboard(analyzer)
@@ -931,7 +1074,212 @@ def heavy_haulers_dashboard(analyzer):
                                          value="", key="hh_openai_key",
                                          help="Get your API key from https://platform.openai.com/api-keys")
         
-        if openai_api_key:
+        # Calculate business potential scores for filtering (always available)
+        def calculate_business_potential(row):
+            score = 0
+            
+            # More equipment types = higher potential
+            score += row['num_equipment_types'] * 20
+            
+            # Multiple sources = more established business
+            score += min(row['num_sources'], 5) * 10
+            
+            # Has phone number = easier to reach
+            if row['phone']:
+                score += 25
+            
+            # Has website = more professional operation
+            if row['website']:
+                score += 15
+            
+            # High-demand equipment bonuses
+            equipment_list = str(row['equipment_types']).lower()
+            if 'excavator' in equipment_list:
+                score += 15
+            if 'crane' in equipment_list:
+                score += 20  # Cranes are high-value for logistics
+            if 'dozer' in equipment_list:
+                score += 10
+            
+            return score
+        
+        # Apply business potential scoring (always available)
+        filtered_df['business_potential'] = filtered_df.apply(calculate_business_potential, axis=1)
+        filtered_df['priority_level'] = pd.cut(filtered_df['business_potential'], 
+                                             bins=[0, 50, 80, 200], 
+                                             labels=['Low', 'Medium', 'High'])
+        
+        # Company Search Section - Always visible
+        st.subheader("🔍 Individual Company Analysis")
+        st.markdown("**Select any company for detailed analysis and AI-powered insights**")
+        
+        # Enhanced company search - include ALL dealers
+        col1, col2 = st.columns([2, 1])
+        
+        with col1:
+            # Search by company name
+            company_search = st.text_input("🔍 Search for company", 
+                                          placeholder="Type company name to search...",
+                                          help="Start typing to filter companies",
+                                          key="hh_company_search")
+        
+        with col2:
+            # Filter by priority level
+            priority_filter = st.selectbox("Priority Level", 
+                                          options=['All', 'High', 'Medium', 'Low'],
+                                          help="Filter companies by priority",
+                                          key="hh_priority_filter")
+        
+        # Filter companies based on search and priority
+        searchable_df = filtered_df.copy()
+        
+        # Apply priority filter
+        if priority_filter != 'All':
+            searchable_df = searchable_df[searchable_df['priority_level'] == priority_filter]
+        
+        # Apply company name search
+        if company_search:
+            searchable_df = searchable_df[searchable_df['name'].str.contains(company_search, case=False, na=False)]
+        
+        # Company selection dropdown
+        if not searchable_df.empty:
+            # Sort by business potential score (highest first)
+            searchable_df = searchable_df.sort_values('business_potential', ascending=False)
+            
+            # Create display options with score and location
+            company_options = []
+            for _, row in searchable_df.iterrows():
+                display_name = f"{row['name']} (Score: {row['business_potential']:.0f}, {row['location']})"
+                company_options.append(display_name)
+            
+            selected_company_display = st.selectbox(
+                f"Select company for analysis ({len(company_options)} matches)",
+                options=company_options,
+                help="Companies sorted by business potential score",
+                key="hh_company_select"
+            )
+            
+            # Show company details (always available)
+            if selected_company_display:
+                # Extract actual company name from display
+                company_name = selected_company_display.split(" (Score:")[0]
+                selected_row = searchable_df[searchable_df['name'] == company_name].iloc[0]
+                
+                # Display company information
+                st.subheader(f"📊 Company Profile: {selected_row['name']}")
+                
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("Business Potential Score", f"{selected_row['business_potential']:.0f}")
+                    st.metric("Priority Level", selected_row['priority_level'])
+                
+                with col2:
+                    st.metric("Equipment Types", selected_row['num_equipment_types'])
+                    st.metric("Data Sources", selected_row['num_sources'])
+                
+                with col3:
+                    st.metric("Has Phone", "✅" if selected_row['phone'] else "❌")
+                    st.metric("Has Website", "✅" if selected_row['website'] else "❌")
+                
+                # Company details
+                st.write(f"**Location:** {selected_row['location']}")
+                if selected_row['phone']:
+                    st.write(f"**Phone:** {selected_row['phone']}")
+                if selected_row['website']:
+                    st.write(f"**Website:** {selected_row['website']}")
+                st.write(f"**Equipment Types:** {selected_row['equipment_types']}")
+                
+                # AI Analysis Section (requires API key)
+                st.subheader("🤖 AI-Powered Analysis")
+                
+                if openai_api_key:
+                    if st.button("🤖 Generate AI Analysis", key="hh_company_ai_analysis"):
+                        # Extract actual company name from display
+                        selected_company = selected_company_display.split(" (Score:")[0]
+                        dealer_info = searchable_df[searchable_df['name'] == selected_company].iloc[0]
+                        
+                        dealer_summary = f"""
+                        Company: {dealer_info['name']}
+                        Location: {dealer_info['location']}
+                        State: {dealer_info['state']}
+                        Equipment Types: {dealer_info['equipment_types']}
+                        Business Potential Score: {dealer_info['business_potential']:.0f} out of 200
+                        Priority Level: {dealer_info['priority_level']}
+                        Phone Available: {'Yes' if dealer_info['phone'] else 'No'}
+                        Website Available: {'Yes' if dealer_info['website'] else 'No'}
+                        Number of Equipment Categories: {dealer_info['num_equipment_types']}
+                        Data Sources: {dealer_info['num_sources']}
+                        Total Listings: {dealer_info['total_listings']}
+                        """
+                        
+                        with st.spinner(f"Analyzing {selected_company}..."):
+                            try:
+                                import openai
+                                client = openai.OpenAI(api_key=openai_api_key)
+                                response = client.chat.completions.create(
+                                    model="gpt-3.5-turbo",
+                                    messages=[
+                                        {"role": "system", "content": "You are a sales strategist for Heavy Haulers Equipment Logistics, specializing in cold outreach to equipment dealers. Create actionable sales strategies with specific talking points and approach recommendations."},
+                                        {"role": "user", "content": f"Create a comprehensive cold outreach strategy for this equipment dealer. Include: 1) Why they need Heavy Haulers services, 2) Specific talking points based on their equipment types, 3) Best approach method, 4) Potential objections and responses, 5) Follow-up strategy. Company details: {dealer_summary}"}
+                                    ],
+                                    max_tokens=600,
+                                    temperature=0.7
+                                )
+                                
+                                st.success(f"✅ AI Analysis Complete for {selected_company}")
+                                
+                                # Display results in an attractive format
+                                st.markdown("---")
+                                st.markdown(f"### 🎯 Sales Strategy: **{selected_company}**")
+                                
+                                # Company quick facts
+                                col1, col2, col3, col4 = st.columns(4)
+                                with col1:
+                                    st.metric("Priority", dealer_info['priority_level'])
+                                with col2:
+                                    st.metric("Score", f"{dealer_info['business_potential']:.0f}/200")
+                                with col3:
+                                    st.metric("Equipment Types", dealer_info['num_equipment_types'])
+                                with col4:
+                                    st.metric("Location", dealer_info['state'])
+                                
+                                st.markdown("### 🤖 AI Recommendations")
+                                st.write(response.choices[0].message.content)
+                                
+                                # Contact info section
+                                st.markdown("### 📞 Contact Information")
+                                contact_col1, contact_col2 = st.columns(2)
+                                with contact_col1:
+                                    if dealer_info['phone']:
+                                        st.markdown(f"**Phone:** {dealer_info['phone']}")
+                                    else:
+                                        st.markdown("**Phone:** Not available")
+                                
+                                with contact_col2:
+                                    if dealer_info['website']:
+                                        st.markdown(f"**Website:** {dealer_info['website']}")
+                                    else:
+                                        st.markdown("**Website:** Not available")
+                                
+                                st.markdown(f"**Full Address:** {dealer_info['location']}")
+                                
+                            except Exception as e:
+                                st.error(f"❌ API Error: {str(e)}")
+                                st.info("💡 Tip: Make sure your OpenAI API key is valid and has sufficient credits.")
+                else:
+                    st.warning("🔑 OpenAI API key required for AI-powered analysis")
+                    st.info("Enter your OpenAI API key above to unlock AI-powered outreach strategies and insights.")
+                    st.markdown("**Without API key, you can still:**")
+                    st.markdown("- Browse and search all companies")
+                    st.markdown("- View business potential scores")
+                    st.markdown("- Access contact information")
+                    st.markdown("- Use pre-built insights below")
+            
+            else:
+                st.info(f"No companies found matching your search criteria. Try adjusting your filters.")
+            
+            # Market Analysis Section
+            st.markdown("---")
             col1, col2 = st.columns(2)
             
             with col1:

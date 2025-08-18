@@ -558,9 +558,136 @@ if master_log:
                                              help="Get your API key from https://platform.openai.com/api-keys")
             
             if openai_api_key:
+                # Company Search Section - Make it prominent
+                st.subheader("🔍 Individual Company Analysis")
+                st.markdown("**Select any company for AI-powered outreach strategy and insights**")
+                
+                # Enhanced company search - include ALL dealers, not just high priority
+                col1, col2 = st.columns([2, 1])
+                
+                with col1:
+                    # Search by company name
+                    company_search = st.text_input("🔍 Search for company", 
+                                                  placeholder="Type company name to search...",
+                                                  help="Start typing to filter companies")
+                
+                with col2:
+                    # Filter by priority level
+                    priority_filter = st.selectbox("Priority Level", 
+                                                  options=['All', 'High', 'Medium', 'Low'],
+                                                  help="Filter companies by priority")
+                
+                # Filter companies based on search and priority
+                searchable_df = filtered_df.copy()
+                
+                # Apply priority filter
+                if priority_filter != 'All':
+                    searchable_df = searchable_df[searchable_df['priority_level'] == priority_filter]
+                
+                # Apply company name search
+                if company_search:
+                    searchable_df = searchable_df[searchable_df['name'].str.contains(company_search, case=False, na=False)]
+                
+                # Company selection dropdown
+                if not searchable_df.empty:
+                    # Sort by business potential score (highest first)
+                    searchable_df = searchable_df.sort_values('business_potential', ascending=False)
+                    
+                    # Create display options with score and location
+                    company_options = []
+                    for _, row in searchable_df.iterrows():
+                        display_name = f"{row['name']} (Score: {row['business_potential']:.0f}, {row['location']})"
+                        company_options.append(display_name)
+                    
+                    selected_company_display = st.selectbox(
+                        f"Select company for AI analysis ({len(company_options)} matches)",
+                        options=company_options,
+                        help="Companies sorted by business potential score"
+                    )
+                    
+                    if selected_company_display and st.button("🤖 Generate AI Analysis", key="company_ai_analysis"):
+                        # Extract actual company name from display
+                        selected_company = selected_company_display.split(" (Score:")[0]
+                        dealer_info = searchable_df[searchable_df['name'] == selected_company].iloc[0]
+                        
+                        dealer_summary = f"""
+                        Company: {dealer_info['name']}
+                        Location: {dealer_info['location']}
+                        State: {dealer_info['state']}
+                        Equipment Types: {dealer_info['equipment_types']}
+                        Business Potential Score: {dealer_info['business_potential']:.0f} out of 200
+                        Priority Level: {dealer_info['priority_level']}
+                        Phone Available: {'Yes' if dealer_info['phone'] else 'No'}
+                        Website Available: {'Yes' if dealer_info['website'] else 'No'}
+                        Number of Equipment Categories: {dealer_info['num_equipment_types']}
+                        Data Sources: {dealer_info['num_sources']}
+                        Total Listings: {dealer_info['total_listings']}
+                        """
+                        
+                        with st.spinner(f"Analyzing {selected_company}..."):
+                            try:
+                                import openai
+                                client = openai.OpenAI(api_key=openai_api_key)
+                                response = client.chat.completions.create(
+                                    model="gpt-3.5-turbo",
+                                    messages=[
+                                        {"role": "system", "content": "You are a sales strategist for Heavy Haulers Equipment Logistics, specializing in cold outreach to equipment dealers. Create actionable sales strategies with specific talking points and approach recommendations."},
+                                        {"role": "user", "content": f"Create a comprehensive cold outreach strategy for this equipment dealer. Include: 1) Why they need Heavy Haulers services, 2) Specific talking points based on their equipment types, 3) Best approach method, 4) Potential objections and responses, 5) Follow-up strategy. Company details: {dealer_summary}"}
+                                    ],
+                                    max_tokens=600,
+                                    temperature=0.7
+                                )
+                                
+                                st.success(f"✅ AI Analysis Complete for {selected_company}")
+                                
+                                # Display results in an attractive format
+                                st.markdown("---")
+                                st.markdown(f"### 🎯 Sales Strategy: **{selected_company}**")
+                                
+                                # Company quick facts
+                                col1, col2, col3, col4 = st.columns(4)
+                                with col1:
+                                    st.metric("Priority", dealer_info['priority_level'])
+                                with col2:
+                                    st.metric("Score", f"{dealer_info['business_potential']:.0f}/200")
+                                with col3:
+                                    st.metric("Equipment Types", dealer_info['num_equipment_types'])
+                                with col4:
+                                    st.metric("Location", dealer_info['state'])
+                                
+                                st.markdown("### 🤖 AI Recommendations")
+                                st.write(response.choices[0].message.content)
+                                
+                                # Contact info section
+                                st.markdown("### 📞 Contact Information")
+                                contact_col1, contact_col2 = st.columns(2)
+                                with contact_col1:
+                                    if dealer_info['phone']:
+                                        st.markdown(f"**Phone:** {dealer_info['phone']}")
+                                    else:
+                                        st.markdown("**Phone:** Not available")
+                                
+                                with contact_col2:
+                                    if dealer_info['website']:
+                                        st.markdown(f"**Website:** {dealer_info['website']}")
+                                    else:
+                                        st.markdown("**Website:** Not available")
+                                
+                                st.markdown(f"**Full Address:** {dealer_info['location']}")
+                                
+                            except Exception as e:
+                                st.error(f"❌ API Error: {str(e)}")
+                                st.info("💡 Tip: Make sure your OpenAI API key is valid and has sufficient credits.")
+                
+                else:
+                    st.info(f"No companies found matching your search criteria. Try adjusting your filters.")
+                
+                # Market Analysis Section
+                st.markdown("---")
                 col1, col2 = st.columns(2)
                 
                 with col1:
+                    st.subheader("📊 Market Analysis")
                     st.subheader("📊 Market Analysis")
                     if st.button("🔍 Generate Market Report", key="market_report"):
                         with st.spinner("Analyzing market data..."):

@@ -107,7 +107,7 @@ func main() {
 	// Dynamic page scraping - start from page 150 and continue until no more pages
 	baseURL := "https://www.machinerytrader.com/listings/search?Category=1015&page=" //stopped at 258
 	currentCategory := categoryMap["1015"]                                           // Extract category from URL
-	startPage := 258                                                                 // Start from where you left off (was 190)
+	startPage := 329                                                                 // Start from where you left off (was 190)
 	maxPages := 400                                                                  // Total pages available
 	maxConsecutiveFailures := 5                                                      // Stop if we get 5 consecutive failures (more robust)
 

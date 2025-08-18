@@ -872,8 +872,18 @@ def heavy_haulers_dashboard(analyzer):
         st.markdown("**Get intelligent analysis of your equipment dealer market**")
         
         # OpenAI configuration
-        openai_api_key = st.text_input("OpenAI API Key", type="password", 
-                                     value=os.getenv("OPENAI_API_KEY", ""), key="hh_openai_key")
+        shared_api_key = os.getenv("OPENAI_API_KEY", "")
+        
+        if shared_api_key and shared_api_key != "your_openai_api_key_here":
+            # Shared API key is configured
+            st.success("✅ Team OpenAI API key configured - AI features ready!")
+            openai_api_key = shared_api_key
+        else:
+            # No shared key, allow individual key input
+            st.info("💡 Enter your OpenAI API key to enable AI-powered insights")
+            openai_api_key = st.text_input("OpenAI API Key", type="password", 
+                                         value="", key="hh_openai_key",
+                                         help="Get your API key from https://platform.openai.com/api-keys")
         
         if openai_api_key:
             col1, col2 = st.columns(2)

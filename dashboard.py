@@ -31,9 +31,12 @@ st.set_page_config(
 def check_password():
     """Simple password authentication for executive access"""
     def password_entered():
-        if st.session_state["password"] == "ContactAnalytics2025!":
+        # Check if password key exists before accessing it
+        if "password" in st.session_state and st.session_state["password"] == "ContactAnalytics2025!":
             st.session_state["password_correct"] = True
-            del st.session_state["password"]
+            # Only delete if it exists
+            if "password" in st.session_state:
+                del st.session_state["password"]
         else:
             st.session_state["password_correct"] = False
 

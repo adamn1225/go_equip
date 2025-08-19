@@ -61,6 +61,7 @@ func exportToJSON(sellerInfos []map[string]string, filename string, category str
 		Email        string `json:"email,omitempty"`
 		SerialNumber string `json:"serial_number,omitempty"`
 		AuctionDate  string `json:"auction_date,omitempty"`
+		URL          string `json:"url,omitempty"`
 	}
 
 	var contacts []Contact
@@ -72,6 +73,7 @@ func exportToJSON(sellerInfos []map[string]string, filename string, category str
 			Email:        info["email"],
 			SerialNumber: info["serial_number"],
 			AuctionDate:  info["auction_date"],
+			URL:          info["url"],
 		}
 		contacts = append(contacts, contact)
 	}
@@ -106,161 +108,107 @@ func main() {
 		// Add more as you discover them
 	}
 
-	// Dynamic page scraping - start from page 150 and continue until no more pages
-	baseURL := "https://www.machinerytrader.com/listings/search?Category=1028&page=" //stopped at 258
-	currentCategory := categoryMap["1028"]                                           // Extract category from URL
-	startPage := 22                                                                  // Start from where you left off (was 190)
-	maxPages := 400                                                                  // Total pages available
-	maxConsecutiveFailures := 5                                                      // Stop if we get 5 consecutive failures (more robust)
+	// Sequential page scraping - continue from where you left off
+	baseURL := "https://www.machinerytrader.com/listings/search?Category=1028&page="
+	currentCategory := categoryMap["1028"] // Extract category from URL
+	startPage := 95                        // Continue from where you left off
+	maxPages := 200                        // Process up to page 200
+	maxConsecutiveFailures := 5            // Stop if we get 5 consecutive failures
 
-	log.Printf("Starting dynamic multi-page OCR scraper from page %d", startPage)
-	log.Printf("🎯 Scraping category: %s (Category=1028)", currentCategory)
-	log.Printf("🎯 Target: Process through page %d (total %d pages)", maxPages, maxPages)
-	log.Println("🔄 Proxy rotation enabled - each page will use a different proxy")
-	log.Println("💡 Will continue scraping until all pages are processed or consecutive failures occur...")
-
-	// Initialize proxy stats tracking
-	proxySuccessCount := 0
-	proxyFailureCount := 0
+	log.Printf("Starting sequential multi-page OCR scraper from page %d", startPage)
+	log.Printf("Scraping category: %s (Category=1028)", currentCategory)
+	log.Printf("Target: Process through page %d", maxPages)
+	log.Println("Proxy rotation enabled - persistent session with proxy switching")
+	log.Println("Will continue scraping until all pages are processed or excessive failures occur...")
 
 	var allSellerInfo []map[string]string
 	consecutiveFailures := 0
-	currentPage := startPage
 
 	// Add defer to ensure data is saved even if script crashes
 	defer func() {
 		if len(allSellerInfo) > 0 {
-			log.Printf("\n💾 Emergency save triggered - saving %d contacts...", len(allSellerInfo))
+			log.Printf("Emergency save triggered - saving %d contacts...", len(allSellerInfo))
 			timestamp := time.Now().Format("20060102_150405")
 			csvFile := fmt.Sprintf("seller_contacts_emergency_%s.csv", timestamp)
 			jsonFile := fmt.Sprintf("seller_contacts_emergency_%s.json", timestamp)
 
 			exportToCSV(allSellerInfo, csvFile)
 			exportToJSON(allSellerInfo, jsonFile, currentCategory)
-			log.Printf("💾 Emergency data saved to %s and %s", csvFile, jsonFile)
+			log.Printf("Emergency data saved to %s and %s", csvFile, jsonFile)
 		}
 		scraper.CloseBrowserSession()
 	}()
 
-	for {
+	// Initialize browser session once at start
+	err := scraper.InitializeBrowserSession()
+	if err != nil {
+		log.Fatalf("Failed to initialize browser session: %v", err)
+	}
+
+	// Process pages sequentially
+	for currentPage := startPage; currentPage <= maxPages; currentPage++ {
 		targetURL := fmt.Sprintf("%s%d", baseURL, currentPage)
+		log.Printf("Processing page %d: %s", currentPage, targetURL)
 
-		log.Printf("\n📄 Processing page %d: %s", currentPage, targetURL)
-		log.Printf("🔍 DEBUG: startPage=%d, currentPage=%d, targetURL=%s", startPage, currentPage, targetURL)
-
-		// Create job
+		// Create job for this page
 		job := models.Job{URL: targetURL}
 
-		// Rotate proxy every 10 pages to avoid detection while maintaining session benefits
-		if (currentPage-startPage)%10 == 0 && currentPage != startPage {
-			log.Printf("🔄 Page %d: Rotating to fresh proxy (every 10 pages)", currentPage)
-			scraper.CloseBrowserSession()
-			time.Sleep(2 * time.Second) // Brief pause between sessions
-		}
-
-		// Take screenshot with Playwright (includes CAPTCHA detection and bypass)
-		log.Printf("🔄 Using Playwright with CAPTCHA detection for page %d...", currentPage)
+		// Take screenshot with Playwright (uses persistent session with proxy rotation)
 		imagePath := scraper.TakeScreenshotPlaywright(job.URL)
+
 		if imagePath == "" {
-			log.Printf("❌ Failed to take screenshot for page %d (possibly IP banned, proxy issue, or no more pages)", currentPage)
-			log.Printf("🔄 Rotating to next proxy due to failure...")
-			proxyFailureCount++
+			log.Printf("Failed to take screenshot for page %d", currentPage)
 			consecutiveFailures++
+
 			if consecutiveFailures >= maxConsecutiveFailures {
-				log.Printf("🛑 Stopping: %d consecutive screenshot failures - likely all proxies banned or no more pages", maxConsecutiveFailures)
+				log.Printf("Too many consecutive failures (%d). Stopping scraper.", consecutiveFailures)
 				break
 			}
-
-			// Add longer delay when we hit failures to avoid detection
-			log.Printf("⏱️  Adding 10-second delay before next attempt...")
-			time.Sleep(10 * time.Second)
-
-			currentPage++
 			continue
 		}
 
-		// Reset consecutive failures on successful screenshot
-		proxySuccessCount++
+		// Reset consecutive failures on success
 		consecutiveFailures = 0
 
 		// Update job with image path
 		job.ImagePath = imagePath
 
 		// Enqueue job for processing
-		log.Printf("📦 Enqueueing job for page %d...", currentPage)
 		if err := queue.Enqueue(job); err != nil {
-			log.Printf("Error enqueueing job for page %d: %v", currentPage, err)
+			log.Printf("Error enqueueing job: %v", err)
+			continue
 		}
 
 		// Process OCR
-		log.Printf("🔍 Processing OCR for page %d...", currentPage)
+		log.Printf("Processing OCR for page %d...", currentPage)
 		text, err := ocrworker.ExtractTextFromImage(imagePath)
 		if err != nil {
-			log.Printf("❌ OCR processing failed for page %d: %v", currentPage, err)
-			log.Println("Note: Make sure tesseract-ocr is installed: sudo apt-get install tesseract-ocr")
-		} else {
-			// Extract seller information (now returns slice of contacts)
-			sellerInfoList := ocrworker.ExtractSellerInfo(text, targetURL)
-			if len(sellerInfoList) > 0 {
-				log.Printf("✅ Page %d: Found %d contacts", currentPage, len(sellerInfoList))
-				allSellerInfo = append(allSellerInfo, sellerInfoList...)
-				consecutiveFailures = 0 // Reset failures on successful extraction
-			} else {
-				log.Printf("⚠️  Page %d: No contacts found (empty page or end of results)", currentPage)
-				consecutiveFailures++
-				if consecutiveFailures >= maxConsecutiveFailures {
-					log.Printf("🛑 Stopping: %d consecutive pages with no data - likely reached end of available listings", maxConsecutiveFailures)
-					break
-				}
-			}
+			log.Printf("OCR processing failed for page %d: %v", currentPage, err)
+			continue
 		}
 
-		// Add randomized delay between pages to avoid detection patterns
-		if (currentPage-startPage+1)%5 == 0 {
-			successRate := float64(proxySuccessCount) / float64(proxySuccessCount+proxyFailureCount) * 100
-			log.Printf("📊 Progress: Page %d | Total contacts: %d | Rate: %.1f contacts/page | Proxy success: %.1f%%",
-				currentPage, len(allSellerInfo), float64(len(allSellerInfo))/float64(currentPage-startPage+1), successRate)
-		}
+		// Extract seller information
+		sellerInfoList := ocrworker.ExtractSellerInfo(text, targetURL)
+		log.Printf("Page %d completed: Found %d contacts", currentPage, len(sellerInfoList))
 
-		// Randomized delay: 3-8 seconds to appear more human-like
-		randomDelay := 3 + rand.Intn(6) // 3-8 seconds
-		log.Printf("⏱️  Human-like delay: %d seconds before next page...", randomDelay)
-		time.Sleep(time.Duration(randomDelay) * time.Second)
+		// Add to our collection
+		allSellerInfo = append(allSellerInfo, sellerInfoList...)
 
-		currentPage++
-
-		// Optional: Add a reasonable upper limit to prevent infinite loops
-		if currentPage > maxPages {
-			log.Printf("🛑 Reached maximum page limit (%d), stopping...", maxPages)
-			break
-		}
+		// Add delay between pages to be respectful to the server
+		delay := 3 + rand.Intn(5) // 3-8 seconds between pages
+		log.Printf("Waiting %d seconds before next page...", delay)
+		time.Sleep(time.Duration(delay) * time.Second)
 	}
 
-	log.Printf("\n🎉 Multi-page scraping completed!")
-	log.Printf("📊 Total pages processed: %d", currentPage-startPage)
-	log.Printf("📝 Total seller contacts found: %d", len(allSellerInfo))
-
-	// Proxy performance summary
-	if proxySuccessCount+proxyFailureCount > 0 {
-		successRate := float64(proxySuccessCount) / float64(proxySuccessCount+proxyFailureCount) * 100
-		log.Printf("🔄 Proxy Performance: %d successful, %d failed (%.1f%% success rate)",
-			proxySuccessCount, proxyFailureCount, successRate)
-	}
-
-	if currentPage > maxPages {
-		log.Printf("🔚 Reason: Reached safety limit of %d pages", maxPages)
-	} else if consecutiveFailures >= maxConsecutiveFailures {
-		log.Printf("🔚 Reason: %d consecutive failures - likely reached end of available pages", maxConsecutiveFailures)
-	} else {
-		log.Printf("🔚 Reason: Manual termination or other exit condition")
-	}
+	log.Printf("Sequential multi-page scraping completed!")
+	log.Printf("Total pages processed: %d to %d", startPage, maxPages)
+	log.Printf("Total seller contacts found: %d", len(allSellerInfo))
 
 	if len(allSellerInfo) > 0 {
-		avgContactsPerPage := float64(len(allSellerInfo)) / float64(currentPage-startPage)
-		log.Printf("📈 Average contacts per page: %.1f", avgContactsPerPage)
-	}
+		pagesProcessed := maxPages - startPage + 1
+		avgContactsPerPage := float64(len(allSellerInfo)) / float64(pagesProcessed)
+		log.Printf("Average contacts per page: %.1f", avgContactsPerPage)
 
-	if len(allSellerInfo) > 0 {
 		// Export to CSV and JSON
 		timestamp := time.Now().Format("20060102_150405")
 		csvFile := fmt.Sprintf("seller_contacts_%s.csv", timestamp)
@@ -269,18 +217,18 @@ func main() {
 		// Export to CSV
 		err := exportToCSV(allSellerInfo, csvFile)
 		if err != nil {
-			log.Printf("❌ Error exporting to CSV: %v", err)
+			log.Printf("Error exporting to CSV: %v", err)
 		} else {
-			log.Printf("💾 CSV exported successfully: %s", csvFile)
+			log.Printf("CSV exported successfully: %s", csvFile)
 		}
 
 		// Export to JSON
 		err = exportToJSON(allSellerInfo, jsonFile, currentCategory)
 		if err != nil {
-			log.Printf("❌ Error exporting to JSON: %v", err)
+			log.Printf("Error exporting to JSON: %v", err)
 		} else {
-			log.Printf("💾 JSON exported successfully: %s", jsonFile)
-			log.Printf("📊 Category: %s, Site: machinerytrader.com", currentCategory)
+			log.Printf("JSON exported successfully: %s", jsonFile)
+			log.Printf("Category: %s, Site: machinerytrader.com", currentCategory)
 		}
 	}
 

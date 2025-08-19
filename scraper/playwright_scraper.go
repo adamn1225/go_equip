@@ -191,14 +191,6 @@ func CloseBrowserSession() {
 	}
 }
 
-// RestartBrowserSessionWithNewProxy forces a complete restart with new proxy
-func RestartBrowserSessionWithNewProxy() error {
-	log.Println("🔄 Forcing browser session restart with new proxy...")
-	CloseBrowserSession()
-	time.Sleep(2 * time.Second) // Brief pause
-	return InitializeBrowserSession()
-}
-
 // TakeScreenshotPlaywright takes a screenshot using the persistent browser session
 func TakeScreenshotPlaywright(targetURL string) string {
 	// Initialize session if not already active
@@ -279,15 +271,10 @@ func TakeScreenshotPlaywright(targetURL string) string {
 			content, _ := globalPage.Content()
 			if strings.Contains(content, "banned your IP address") || strings.Contains(content, "Error 1007") {
 				log.Printf("🛑 CONFIRMED: Cloudflare IP ban detected!")
-				log.Printf("🔄 Forcing browser restart with new proxy...")
 
-				// Force restart session with new proxy
-				err := RestartBrowserSessionWithNewProxy()
-				if err != nil {
-					log.Printf("❌ Failed to restart browser session: %v", err)
-				}
-
-				return "" // Return empty to trigger retry with new proxy
+				// Mark current proxy as banned if we can identify it
+				// Note: This requires tracking which proxy was used for this session
+				return "" // Return empty to trigger proxy rotation
 			}
 		}
 	}

@@ -1336,7 +1336,7 @@ def heavy_haulers_dashboard(analyzer):
         with col1:
             search_term = st.text_input("🔍 Search dealers", placeholder="Company name, location, or equipment type", key="hh_search")
         with col2:
-            show_only_priority = st.checkbox("Show only high priority prospects", key="hh_priority_filter")
+            show_only_priority = st.checkbox("Show only high priority prospects", key="hh_priority_checkbox")
         
         # Apply filters
         display_df = filtered_df.copy()

@@ -72,11 +72,11 @@ func InitializeBrowserSession() error {
 		},
 	}
 
-	// Add proxy if available (temporarily disabled for testing)
-	if false && proxyManager != nil && len(proxyManager.proxies) > 0 {
+	// Add proxy if available (re-enabled for proxy rotation)
+	if proxyManager != nil && len(proxyManager.proxies) > 0 {
 		proxy := proxyManager.GetNextProxy()
 		if proxy != "" {
-			log.Printf("Using proxy for session: %s", proxy)
+			log.Printf("🔄 Using proxy for Playwright session: %s", proxy)
 
 			// Parse proxy URL to extract components
 			if strings.Contains(proxy, "@") {
@@ -191,6 +191,14 @@ func CloseBrowserSession() {
 	}
 }
 
+// RestartBrowserSessionWithNewProxy forces a complete restart with new proxy
+func RestartBrowserSessionWithNewProxy() error {
+	log.Println("🔄 Forcing browser session restart with new proxy...")
+	CloseBrowserSession()
+	time.Sleep(2 * time.Second) // Brief pause
+	return InitializeBrowserSession()
+}
+
 // TakeScreenshotPlaywright takes a screenshot using the persistent browser session
 func TakeScreenshotPlaywright(targetURL string) string {
 	// Initialize session if not already active
@@ -247,8 +255,42 @@ func TakeScreenshotPlaywright(targetURL string) string {
 	log.Printf("🔍 DEBUG: Successfully navigated. Current URL: %s", actualURL)
 	log.Printf("🔍 DEBUG: Expected URL: %s", targetURL)
 
-	// Wait for page to load and check for CAPTCHA
+	// Wait for page to load and check for blocks/bans
 	time.Sleep(3 * time.Second)
+
+	// Check for Cloudflare blocks and IP bans first
+	banSelectors := []string{
+		"text=Access denied",
+		"text=banned your IP address",
+		"text=Error 1007",
+		"text=Error 1006",
+		"text=Ray ID:",
+		".cf-error-title",
+		"#cf-error-details",
+	}
+
+	for _, selector := range banSelectors {
+		locator := globalPage.Locator(selector)
+		count, err := locator.Count()
+		if err == nil && count > 0 {
+			log.Printf("🚫 IP BAN/BLOCK detected with selector: %s", selector)
+
+			// Get page content for debugging
+			content, _ := globalPage.Content()
+			if strings.Contains(content, "banned your IP address") || strings.Contains(content, "Error 1007") {
+				log.Printf("🛑 CONFIRMED: Cloudflare IP ban detected!")
+				log.Printf("🔄 Forcing browser restart with new proxy...")
+
+				// Force restart session with new proxy
+				err := RestartBrowserSessionWithNewProxy()
+				if err != nil {
+					log.Printf("❌ Failed to restart browser session: %v", err)
+				}
+
+				return "" // Return empty to trigger retry with new proxy
+			}
+		}
+	}
 
 	// Check for CAPTCHA presence
 	captchaPresent := false

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math/rand"
 	"os"
 	"time"
 
@@ -95,25 +96,25 @@ func exportToJSON(sellerInfos []map[string]string, filename string, category str
 func main() {
 	// MachineryTrader category mapping
 	categoryMap := map[string]string{
+		"1028": "Drills",        // Scrapers
 		"1060": "wheel loaders", // Agriculture
 		"1015": "cranes",        // Mini Excavators
 		"1025": "dozer",         // Dozers/Bulldozers
 		"1026": "excavator",     // Excavators
 		"1027": "loader",        // Loaders
-		"1028": "scraper",       // Scrapers
 		"1029": "grader",        // Graders
 		// Add more as you discover them
 	}
 
 	// Dynamic page scraping - start from page 150 and continue until no more pages
-	baseURL := "https://www.machinerytrader.com/listings/search?Category=1060&page=" //stopped at 258
-	currentCategory := categoryMap["1060"]                                           // Extract category from URL
-	startPage := 1                                                                   // Start from where you left off (was 190)
+	baseURL := "https://www.machinerytrader.com/listings/search?Category=1028&page=" //stopped at 258
+	currentCategory := categoryMap["1028"]                                           // Extract category from URL
+	startPage := 22                                                                  // Start from where you left off (was 190)
 	maxPages := 400                                                                  // Total pages available
 	maxConsecutiveFailures := 5                                                      // Stop if we get 5 consecutive failures (more robust)
 
 	log.Printf("Starting dynamic multi-page OCR scraper from page %d", startPage)
-	log.Printf("🎯 Scraping category: %s (Category=1060)", currentCategory)
+	log.Printf("🎯 Scraping category: %s (Category=1028)", currentCategory)
 	log.Printf("🎯 Target: Process through page %d (total %d pages)", maxPages, maxPages)
 	log.Println("🔄 Proxy rotation enabled - each page will use a different proxy")
 	log.Println("💡 Will continue scraping until all pages are processed or consecutive failures occur...")
@@ -150,17 +151,30 @@ func main() {
 		// Create job
 		job := models.Job{URL: targetURL}
 
-		// Take screenshot with proxy rotation (no CAPTCHA handling)
-		log.Printf("🔄 Using proxy rotation for page %d...", currentPage)
-		imagePath := scraper.TakeScreenshot(job.URL)
+		// Rotate proxy every 10 pages to avoid detection while maintaining session benefits
+		if (currentPage-startPage)%10 == 0 && currentPage != startPage {
+			log.Printf("🔄 Page %d: Rotating to fresh proxy (every 10 pages)", currentPage)
+			scraper.CloseBrowserSession()
+			time.Sleep(2 * time.Second) // Brief pause between sessions
+		}
+
+		// Take screenshot with Playwright (includes CAPTCHA detection and bypass)
+		log.Printf("🔄 Using Playwright with CAPTCHA detection for page %d...", currentPage)
+		imagePath := scraper.TakeScreenshotPlaywright(job.URL)
 		if imagePath == "" {
-			log.Printf("❌ Failed to take screenshot for page %d (possibly no more pages or proxy issue)", currentPage)
+			log.Printf("❌ Failed to take screenshot for page %d (possibly IP banned, proxy issue, or no more pages)", currentPage)
+			log.Printf("🔄 Rotating to next proxy due to failure...")
 			proxyFailureCount++
 			consecutiveFailures++
 			if consecutiveFailures >= maxConsecutiveFailures {
-				log.Printf("🛑 Stopping: %d consecutive screenshot failures - likely reached end of available pages", maxConsecutiveFailures)
+				log.Printf("🛑 Stopping: %d consecutive screenshot failures - likely all proxies banned or no more pages", maxConsecutiveFailures)
 				break
 			}
+
+			// Add longer delay when we hit failures to avoid detection
+			log.Printf("⏱️  Adding 10-second delay before next attempt...")
+			time.Sleep(10 * time.Second)
+
 			currentPage++
 			continue
 		}
@@ -201,13 +215,17 @@ func main() {
 			}
 		}
 
-		// Add delay between pages to be respectful
+		// Add randomized delay between pages to avoid detection patterns
 		if (currentPage-startPage+1)%5 == 0 {
 			successRate := float64(proxySuccessCount) / float64(proxySuccessCount+proxyFailureCount) * 100
 			log.Printf("📊 Progress: Page %d | Total contacts: %d | Rate: %.1f contacts/page | Proxy success: %.1f%%",
 				currentPage, len(allSellerInfo), float64(len(allSellerInfo))/float64(currentPage-startPage+1), successRate)
 		}
-		time.Sleep(3 * time.Second)
+
+		// Randomized delay: 3-8 seconds to appear more human-like
+		randomDelay := 3 + rand.Intn(6) // 3-8 seconds
+		log.Printf("⏱️  Human-like delay: %d seconds before next page...", randomDelay)
+		time.Sleep(time.Duration(randomDelay) * time.Second)
 
 		currentPage++
 

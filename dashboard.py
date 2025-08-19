@@ -41,13 +41,13 @@ def check_password():
             st.session_state["password_correct"] = False
 
     if "password_correct" not in st.session_state:
-        st.markdown("# 🔐 Contact Analytics Dashboard")
+        st.markdown("# Contact Analytics Dashboard")
         st.markdown("**Executive Access Required**")
         st.text_input("Enter Password:", type="password", on_change=password_entered, key="password")
         st.info("Contact your system administrator for access credentials.")
         return False
     elif not st.session_state["password_correct"]:
-        st.markdown("# 🔐 Contact Analytics Dashboard") 
+        st.markdown("# Contact Analytics Dashboard") 
         st.text_input("Enter Password:", type="password", on_change=password_entered, key="password")
         st.error("❌ Incorrect password. Please try again.")
         return False
@@ -166,8 +166,8 @@ def main():
         return
     
     # Dashboard Mode Selector
-    st.markdown("# 🏗️ Equipment Seller Database Dashboard")
-    st.markdown("**Authorized Access - Executive Analytics Portal**")
+    st.markdown("# Equipment Seller Database Dashboard")
+    st.markdown("**Authorized Access - Analytics Portal**")
     
     # Creative Mode Selection UI
     st.markdown("### Choose Your Analytics Experience")
@@ -192,7 +192,7 @@ def main():
     
     .general-card {
         border: 2px solid #1f77b4;
-        background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+        background: #051117;
     }
     
     .heavy-card {
@@ -225,7 +225,7 @@ def main():
     <style>
     /* Override Streamlit's default button styles */
     .stButton > button {
-        background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%) !important;
+        background: #071014 !important;
         color: white !important;
         border: none !important;
         border-radius: 10px !important;
@@ -239,7 +239,7 @@ def main():
     }
     
     .stButton > button:hover {
-        background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%) !important;
+        background: linear-gradient(135deg, #184e66 0%, #071014 100%) !important;
         transform: translateY(-2px) !important;
         box-shadow: 0 6px 12px rgba(59, 130, 246, 0.4) !important;
     }
@@ -262,22 +262,22 @@ def main():
         with st.container():
             st.markdown("""
             <div class="dashboard-card general-card">
-                <h2 style="color: #1565c0;" class="card-title">📊 General Analytics</h2>
-                <p style="color: #424242;" class="card-description">
+                <h2 style="color: #dce0e6;" class="card-title">General Insights/Analytics</h2>
+                <p style="color: #f0f2f5;" class="card-description">
                     Comprehensive database insights, contact analysis, 
                     and business intelligence across all equipment categories
                 </p>
-                <div style="color: #666;" class="card-features">
-                    ✓ Contact Database Overview<br>
-                    ✓ Geographic Distribution<br>
-                    ✓ Category Analysis<br>
-                    ✓ Source Performance
+                <div style="color: #f0f2f5;" class="card-features">
+                    - Contact Database Overview<br>
+                    - Geographic Distribution<br>
+                    - Category Analysis<br>
+                    - Source Performance
                 </div>
             </div>
             """, unsafe_allow_html=True)
             
             general_selected = st.button(
-                "🚀 Launch General Analytics", 
+                "Launch General Analytics", 
                 key="general_btn",
                 use_container_width=True,
                 type="primary" if st.session_state.get('dashboard_mode') == 'general' else "secondary"
@@ -287,23 +287,23 @@ def main():
         # Heavy Haulers Card  
         with st.container():
             st.markdown("""
-            <div class="dashboard-card heavy-card">
-                <h2 style="color: #e65100;" class="card-title">🚛 Heavy Haulers Intelligence</h2>
-                <p style="color: #424242;" class="card-description">
+            <div class="dashboard-card general-card">
+                <h2 style="color: #dce0e6;" class="card-title">AI Insights/Analytics</h2>
+                <p style="color: #f0f2f5;" class="card-description">
                     Advanced sales intelligence focused on high-value 
                     equipment dealers with AI-powered insights
                 </p>
-                <div style="color: #666;" class="card-features">
-                    ✓ Business Potential Scoring<br>
-                    ✓ AI-Powered Company Analysis<br>
-                    ✓ Priority Lead Identification<br>
-                    ✓ Geographic Heat Mapping
+                <div style="color: #f0f2f5;" class="card-features">
+                    - Business Potential Scoring<br>
+                    - AI-Powered Company Analysis<br>
+                    - Priority Lead Identification<br>
+                    - Geographic Heat Mapping
                 </div>
             </div>
             """, unsafe_allow_html=True)
             
             heavy_selected = st.button(
-                "🎯 Launch Heavy Haulers Intel", 
+                "Launch Heavy Haulers Intel", 
                 key="heavy_btn",
                 use_container_width=True,
                 type="primary" if st.session_state.get('dashboard_mode') == 'heavy' else "secondary"
@@ -376,7 +376,7 @@ def general_analytics_dashboard(analyzer):
     
     # Machine Category filter with dynamic options
     category_options = ['All Categories'] + [cat[0] for cat in sorted_categories]
-    selected_category = st.sidebar.selectbox("🏗️ Equipment Category", category_options)
+    selected_category = st.sidebar.selectbox("Equipment Category", category_options)
     
     # Show category insights in sidebar
     if selected_category != 'All Categories' and selected_category in category_stats:
@@ -393,7 +393,7 @@ def general_analytics_dashboard(analyzer):
     
     # Quick search for specific equipment
     st.sidebar.markdown("---")
-    search_term = st.sidebar.text_input("🔍 Search Equipment/Company", placeholder="e.g., CAT, John Deere, Excavator")
+    search_term = st.sidebar.text_input("Search Equipment/Company", placeholder="e.g., CAT, John Deere, Excavator")
     
     # Priority filter
     priority_options = ['All'] + list(analyzer.df['priority_level'].unique())
@@ -451,140 +451,11 @@ def general_analytics_dashboard(analyzer):
     
     # Use native Streamlit components for better compatibility
     
-    # Show category grid if we have multiple categories
-    if len(sorted_categories) > 1:
-        st.markdown("---")
-        st.markdown("### 📊 Equipment Categories Overview")
-        
-        # Use Streamlit columns for better rendering
-        total_contacts = len(analyzer.df)
-        num_categories = len(sorted_categories)
-        
-        # Create grid using Streamlit columns (3 columns max for good layout)
-        cols_per_row = min(3, num_categories)
-        rows_needed = (num_categories + cols_per_row - 1) // cols_per_row
-        
-        category_index = 0
-        for row in range(rows_needed):
-            # Create columns for this row
-            cols = st.columns(cols_per_row)
-            
-            for col_idx in range(cols_per_row):
-                if category_index < num_categories:
-                    category_name, stats = sorted_categories[category_index]
-                    
-                    with cols[col_idx]:
-                        # Check if this is a new category
-                        percentage = (stats['count'] / total_contacts * 100) if total_contacts > 0 else 0
-                        is_new = stats['count'] < 100 or percentage < 5
-                        
-                        # Generate equipment emoji
-                        emojis = {
-                            'wheel loaders': '🚜', 'construction': '🏗️', 'excavators': '⚡',
-                            'bulldozers': '🦏', 'cranes': '🏗️', 'tractors': '🚜', 
-                            'trucks': '🚛', 'trailers': '📦', 'forklifts': '🏗️',
-                            'heavy haulers': '🚛', 'equipment': '⚙️', 'dozer': '🚧',
-                            'excavator': '⚡'
-                        }
-                        emoji = emojis.get(category_name.lower(), '🔧')
-                        
-                        # Calculate average listings per dealer
-                        avg_listings = stats['total_listings'] / stats['count'] if stats['count'] > 0 else 0
-                        
-                        # Create clean card using Streamlit container
-                        with st.container():
-                            # Add some visual styling with emojis and colors
-                            if is_new:
-                                st.markdown(f"🔥 **{emoji} {category_name}** *(NEW!)*")
-                            else:
-                                st.markdown(f"**{emoji} {category_name}**")
-                            
-                            st.markdown(f"*{percentage:.1f}% of total dealers*")
-                            st.markdown("---")
-                        
-                        # Create metrics in a 2x2 grid
-                        metric_col1, metric_col2 = st.columns(2)
-                        with metric_col1:
-                            st.metric("Dealers", f"{stats['count']:,}")
-                            st.metric("States", f"{len(stats['states'])}")
-                        with metric_col2:
-                            st.metric("Listings", f"{stats['total_listings']:,}")
-                            st.metric("Avg/Dealer", f"{avg_listings:.1f}")
-                        
-                        # Add visual separation between categories
-                        st.markdown("<br>", unsafe_allow_html=True)
-                    
-                    category_index += 1
-    
-    # Equipment Category Analysis
-    st.subheader("🏗️ Equipment Category Breakdown")
-    col1, col2, col3, col4, col5 = st.columns(5)
-    
-    # Extract equipment categories from sources
-    category_counts = {}
-    for _, contact in filtered_df.iterrows():
-        categories = contact.get('categories', 'construction').split(',')
-        for cat in categories:
-            cat = cat.strip()
-            if cat:
-                category_counts[cat] = category_counts.get(cat, 0) + 1
-    
-    # Display top categories
-    sorted_categories = sorted(category_counts.items(), key=lambda x: x[1], reverse=True)
-    
-    with col1:
-        if sorted_categories:
-            st.metric("Primary Category", sorted_categories[0][0].title(), f"{sorted_categories[0][1]:,} contacts")
-    
-    with col2:
-        if len(sorted_categories) > 1:
-            st.metric("Secondary Category", sorted_categories[1][0].title(), f"{sorted_categories[1][1]:,} contacts")
-    
-    with col3:
-        dozer_count = category_counts.get('dozer', 0)
-        st.metric("Dozer Equipment", f"{dozer_count:,}")
-    
-    with col4:
-        multi_category = len([c for c in filtered_df['categories'] if ',' in str(c)])
-        st.metric("Multi-Category Dealers", f"{multi_category:,}")
-
-    with col5:
-        total_categories = len(category_counts)
-        st.metric("Total Categories", f"{total_categories}")
-
-    # Category-Specific Insights (NEW!)
-    if selected_category != 'All Categories':
-        st.markdown("---")
-        st.subheader(f"🎯 {selected_category} Market Analysis")
-        
-        col1, col2, col3, col4, col5 = st.columns(5)
-        
-        with col1:
-            avg_listings_category = filtered_df['total_listings'].mean()
-            st.metric("Avg Listings per Dealer", f"{avg_listings_category:.1f}")
-        
-        with col2:
-            top_dealer = filtered_df.nlargest(1, 'total_listings')
-            if not top_dealer.empty:
-                st.metric("Top Dealer", top_dealer.iloc[0]['seller_company'][:20] + "...", f"{top_dealer.iloc[0]['total_listings']} listings")
-        
-        with col3:
-            premium_in_category = len(filtered_df[filtered_df['priority_level'] == 'Premium'])
-            st.metric("Premium Dealers", f"{premium_in_category}")
-        
-        with col4:
-            states_with_category = filtered_df['state'].nunique()
-            st.metric("States Covered", f"{states_with_category}")
-        
-        # Category insights
-        st.info(f"💡 **{selected_category} Insights:** {len(filtered_df):,} dealers found with avg {avg_listings_category:.1f} listings each. "
-                f"Top markets: {', '.join(filtered_df['state'].value_counts().head(3).index.tolist())}")
-    
     # Charts row 1
     col1, col2 = st.columns(2)
     
     with col1:
-        st.subheader("📊 Priority Distribution")
+        st.subheader("Priority Distribution")
         priority_counts = filtered_df['priority_level'].value_counts()
         fig_priority = px.pie(
             values=priority_counts.values,
@@ -600,7 +471,16 @@ def general_analytics_dashboard(analyzer):
         st.plotly_chart(fig_priority, use_container_width=True)
     
     with col2:
-        st.subheader("🏗️ Equipment Categories")
+        st.subheader("Equipment Categories")
+        # Extract equipment categories from sources for chart
+        category_counts = {}
+        for _, contact in filtered_df.iterrows():
+            categories = contact.get('categories', 'construction').split(',')
+            for cat in categories:
+                cat = cat.strip()
+                if cat:
+                    category_counts[cat] = category_counts.get(cat, 0) + 1
+        
         if category_counts:
             # Create category chart - show ALL categories
             cat_df = pd.DataFrame(list(category_counts.items()), columns=['Category', 'Count'])
@@ -643,7 +523,7 @@ def general_analytics_dashboard(analyzer):
     col1, col2 = st.columns(2)
     
     with col1:
-        st.subheader("📈 Listing Volume Distribution")
+        st.subheader("Listing Volume Distribution")
         # Create bins for listing counts
         bins = [0, 1, 5, 10, 20, 50, float('inf')]
         labels = ['0', '1-4', '5-9', '10-19', '20-49', '50+']
@@ -658,7 +538,7 @@ def general_analytics_dashboard(analyzer):
         st.plotly_chart(fig_volume, use_container_width=True)
     
     with col2:
-        st.subheader("🏆 Top Companies by Listings")
+        st.subheader("Top Companies by Listings")
         top_companies = filtered_df.nlargest(10, 'total_listings')[['seller_company', 'total_listings', 'priority_level']]
         
         fig_companies = px.bar(
@@ -679,7 +559,7 @@ def general_analytics_dashboard(analyzer):
         st.plotly_chart(fig_companies, use_container_width=True)
     
     # High-value contacts table
-    st.subheader("💎 High-Value Contacts")
+    st.subheader("High-Value Contacts")
     
     high_value_df = filtered_df[filtered_df['priority_level'].isin(['Premium', 'High'])].sort_values('priority_score', ascending=False)
     

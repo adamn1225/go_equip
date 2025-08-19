@@ -44,13 +44,30 @@ func NewProxyManager() (*ProxyManager, error) {
 		return nil, fmt.Errorf("failed to fetch proxies: %v", err)
 	}
 
-	return &ProxyManager{
+	pm := &ProxyManager{
 		proxies:     proxies,
-		current:     0,
+		current:     rand.Intn(len(proxies)), // Start from random position
 		retryCount:  make(map[string]int),
 		maxRetries:  3,
 		usedProxies: make(map[string]time.Time),
-	}, nil
+	}
+
+	// Pre-ban known problematic IPs
+	knownBannedIPs := []string{
+		"192.210.191.185", // Previously banned IP
+	}
+
+	for _, bannedIP := range knownBannedIPs {
+		for _, proxy := range proxies {
+			if strings.Contains(proxy, bannedIP) {
+				pm.MarkProxyBanned(proxy)
+				log.Printf("🚫 Pre-banned known bad proxy: %s", proxy)
+			}
+		}
+	}
+
+	log.Printf("✅ Proxy manager initialized with %d proxies, starting at position %d", len(proxies), pm.current)
+	return pm, nil
 }
 
 func fetchProxies(apiKey, proxyURL string) ([]string, error) {
@@ -126,42 +143,85 @@ func (pm *ProxyManager) GetNextProxy() string {
 
 	// Find a proxy that hasn't been used recently or has low retry count
 	now := time.Now()
+
+	// Try to find a completely fresh proxy first
 	for attempts := 0; attempts < len(pm.proxies); attempts++ {
 		pm.current = (pm.current + 1) % len(pm.proxies)
 		proxy := pm.proxies[pm.current]
 
-		// Check if proxy was used recently (within 30 seconds)
+		// Skip banned/failed proxies entirely
+		if pm.retryCount[proxy] >= pm.maxRetries {
+			continue
+		}
+
+		// Skip recently used proxies (within 60 seconds for more aggressive rotation)
 		if lastUsed, exists := pm.usedProxies[proxy]; exists {
-			if now.Sub(lastUsed) < 30*time.Second {
-				continue // Skip recently used proxy
+			if now.Sub(lastUsed) < 60*time.Second {
+				continue
 			}
 		}
 
-		// Check retry count
-		if pm.retryCount[proxy] >= pm.maxRetries {
-			continue // Skip proxy that has exceeded retry limit
-		}
-
-		// Mark proxy as used
+		// This proxy looks good - mark it as used and return
 		pm.usedProxies[proxy] = now
-		log.Printf("🔄 Selected proxy: %s (usage #%d)", proxy, pm.retryCount[proxy]+1)
+		log.Printf("🔄 Selected fresh proxy: %s (usage #%d)", proxy, pm.retryCount[proxy]+1)
 		return proxy
 	}
 
-	// If all proxies are recently used or maxed out, reset and use any proxy
-	log.Printf("⚠️ All proxies recently used, resetting usage tracking")
-	pm.usedProxies = make(map[string]time.Time)
-	pm.retryCount = make(map[string]int)
+	// If no fresh proxies, try any non-banned proxy
+	log.Printf("⚠️ No fresh proxies available, trying any non-banned proxy...")
+	for attempts := 0; attempts < len(pm.proxies); attempts++ {
+		pm.current = (pm.current + 1) % len(pm.proxies)
+		proxy := pm.proxies[pm.current]
 
-	// Return first available proxy
-	proxy := pm.proxies[pm.current]
+		// Only skip completely banned proxies
+		if pm.retryCount[proxy] >= pm.maxRetries {
+			continue
+		}
+
+		pm.usedProxies[proxy] = now
+		log.Printf("🔄 Selected recycled proxy: %s (usage #%d)", proxy, pm.retryCount[proxy]+1)
+		return proxy
+	}
+
+	// Last resort - reset everything and try again
+	log.Printf("🚨 All proxies appear banned! Resetting ban tracking...")
+	pm.retryCount = make(map[string]int)
+	pm.usedProxies = make(map[string]time.Time)
+
+	// Pick a random proxy to restart
+	randomIndex := rand.Intn(len(pm.proxies))
+	proxy := pm.proxies[randomIndex]
+	pm.current = randomIndex
 	pm.usedProxies[proxy] = now
+	log.Printf("🔄 Emergency proxy selection: %s", proxy)
 	return proxy
 }
 
 func (pm *ProxyManager) MarkProxyFailed(proxy string) {
 	pm.retryCount[proxy]++
 	log.Printf("❌ Proxy failed: %s (failure count: %d/%d)", proxy, pm.retryCount[proxy], pm.maxRetries)
+
+	// If this is a ban/block, mark proxy as temporarily unusable
+	if pm.retryCount[proxy] >= pm.maxRetries {
+		log.Printf("🚫 Proxy %s marked as unusable due to repeated failures", proxy)
+	}
+}
+
+// MarkProxyBanned marks a proxy as banned (more severe than failed)
+func (pm *ProxyManager) MarkProxyBanned(proxy string) {
+	pm.retryCount[proxy] = pm.maxRetries + 1 // Exceed max retries to disable
+	log.Printf("🛑 Proxy BANNED: %s - removing from rotation", proxy)
+}
+
+// GetHealthyProxies returns count of healthy proxies
+func (pm *ProxyManager) GetHealthyProxies() int {
+	healthy := 0
+	for _, proxy := range pm.proxies {
+		if pm.retryCount[proxy] < pm.maxRetries {
+			healthy++
+		}
+	}
+	return healthy
 }
 
 func (pm *ProxyManager) GetProxyStats() map[string]interface{} {
@@ -182,9 +242,9 @@ func TakeScreenshot(targetURL string) string {
 		// Continue without proxy
 	}
 
-	// Set up launcher with stealth mode
+	// Set up launcher with stealth mode (NOT headless for proxy debugging)
 	l := launcher.New().
-		Headless(true).
+		Headless(false). // Changed to false for debugging
 		NoSandbox(true).
 		Set("disable-blink-features", "AutomationControlled").
 		Set("disable-features", "VizDisplayCompositor")
@@ -198,13 +258,19 @@ func TakeScreenshot(targetURL string) string {
 			// Parse the proxy URL to get components
 			proxyURL, err := url.Parse(proxy)
 			if err == nil {
-				// Set proxy server without auth for now
+				// Chrome/Rod proxy format: just host:port
 				proxyServer := fmt.Sprintf("%s:%s", proxyURL.Hostname(), proxyURL.Port())
 				l = l.Set("proxy-server", proxyServer)
-				log.Printf("🔄 Using proxy: %s (Full: %s)", proxyServer, proxy)
 
-				// Note: Proxy authentication with username/password requires additional setup
-				// For now, we'll use the proxy without auth
+				// Handle authentication through a different method
+				username := proxyURL.User.Username()
+				password, _ := proxyURL.User.Password()
+				if username != "" && password != "" {
+					log.Printf("🔄 Using proxy: %s (auth: %s:***)", proxyServer, username)
+				} else {
+					log.Printf("🔄 Using proxy: %s (no auth)", proxyServer)
+				}
+				log.Printf("🔄 Full proxy config: %s", proxy)
 			} else {
 				log.Printf("❌ Error parsing proxy URL: %v", err)
 			}
@@ -219,6 +285,20 @@ func TakeScreenshot(targetURL string) string {
 	controlURL := l.MustLaunch()
 	browser := rod.New().ControlURL(controlURL).MustConnect()
 	defer browser.MustClose()
+
+	// Set proxy authentication if needed
+	if currentProxy != "" {
+		proxyURL, _ := url.Parse(currentProxy)
+		if proxyURL != nil && proxyURL.User != nil {
+			username := proxyURL.User.Username()
+			password, _ := proxyURL.User.Password()
+			if username != "" && password != "" {
+				// Use Rod's built-in proxy authentication
+				browser.MustHandleAuth(username, password)
+				log.Printf("🔐 Proxy authentication set for %s", username)
+			}
+		}
+	}
 
 	// Create page with stealth mode
 	page := stealth.MustPage(browser)

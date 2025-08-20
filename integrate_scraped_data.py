@@ -8,6 +8,9 @@ import json
 import hashlib
 from datetime import datetime
 import re
+import glob
+import os
+import sys
 
 def create_contact_id(phone, company):
     """Create a consistent contact ID from phone/company"""
@@ -189,10 +192,35 @@ def integrate_scraped_data(scraped_file, master_file):
     print(f"   🏷️  Category integrated: {category}")
     print(f"   📅 Database last updated: {master_data['metadata']['last_updated']}")
 
+def get_latest_scraped_file():
+    """Find the most recent seller_contacts_*.json file"""
+    pattern = "seller_contacts_[0-9]*_[0-9]*.json"
+    files = glob.glob(pattern)
+    if not files:
+        raise FileNotFoundError("No seller_contacts_*.json files found")
+    
+    # Sort by modification time (newest first)
+    files.sort(key=os.path.getmtime, reverse=True)
+    return files[0]
+
 def main():
     """Main function"""
-    # Use the latest scraped file
-    scraped_file = "seller_contacts_20250819_042125.json"
+    
+    # Check if specific file was provided as argument
+    if len(sys.argv) > 1:
+        scraped_file = sys.argv[1]
+        if not os.path.exists(scraped_file):
+            print(f"❌ Error: File '{scraped_file}' not found")
+            return
+    else:
+        # Auto-detect latest file
+        try:
+            scraped_file = get_latest_scraped_file()
+            print(f"🔍 Auto-detected latest file: {scraped_file}")
+        except FileNotFoundError as e:
+            print(f"❌ Error: {e}")
+            return
+    
     master_file = "master_contact_database.json"
     
     print("🚀 Starting data integration...")

@@ -98,21 +98,22 @@ func exportToJSON(sellerInfos []map[string]string, filename string, category str
 func main() {
 	// MachineryTrader category mapping
 	categoryMap := map[string]string{
+		"1035": "Forestry Equipment",
 		"1028": "Drills",        // Scrapers
 		"1060": "wheel loaders", // Agriculture
 		"1015": "cranes",        // Mini Excavators
 		"1025": "dozer",         // Dozers/Bulldozers
 		"1026": "excavator",     // Excavators
-		"1027": "loader",        // Loaders
 		"1048": "grader",        // Graders
+		"1027": "loader",        // Loaders
 		// Add more as you discover them
 	}
 
 	// Sequential page scraping - continue from where you left off
-	baseURL := "https://www.machinerytrader.com/listings/search?Category=1048&page="
-	currentCategory := categoryMap["1048"] // Extract category from URL
-	startPage := 111                       // Continue from where you left off
-	maxPages := 151                        // Process up to page 200
+	baseURL := "https://www.machinerytrader.com/listings/search?Category=1035&page="
+	currentCategory := categoryMap["1035"] // Extract category from URL
+	startPage := 163                       // Continue from where you left off
+	maxPages := 215                        // Process up to page 215
 	maxConsecutiveFailures := 5            // Stop if we get 5 consecutive failures
 
 	log.Printf("Starting sequential multi-page OCR scraper from page %d", startPage)

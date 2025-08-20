@@ -39,14 +39,22 @@ func NewProxyManager() (*ProxyManager, error) {
 		return nil, fmt.Errorf("WEBSHARE_API_KEY and WEBSHARE_PROXY_URL must be set in .env file")
 	}
 
-	proxies, err := fetchProxies(apiKey, proxyURL)
+	allProxies, err := fetchProxies(apiKey, proxyURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch proxies: %v", err)
 	}
 
+	// Use only first 200 proxies for better bandwidth distribution
+	// This gives each proxy ~1.25GB instead of 250MB per month
+	maxProxies := 200
+	if len(allProxies) > maxProxies {
+		allProxies = allProxies[:maxProxies]
+		log.Printf("🎯 Using %d proxies for better bandwidth per proxy (~1.25GB each)", maxProxies)
+	}
+
 	pm := &ProxyManager{
-		proxies:     proxies,
-		current:     rand.Intn(len(proxies)), // Start from random position
+		proxies:     allProxies,
+		current:     rand.Intn(len(allProxies)), // Start from random position
 		retryCount:  make(map[string]int),
 		maxRetries:  3,
 		usedProxies: make(map[string]time.Time),
@@ -58,7 +66,7 @@ func NewProxyManager() (*ProxyManager, error) {
 	}
 
 	for _, bannedIP := range knownBannedIPs {
-		for _, proxy := range proxies {
+		for _, proxy := range allProxies {
 			if strings.Contains(proxy, bannedIP) {
 				pm.MarkProxyBanned(proxy)
 				log.Printf("🚫 Pre-banned known bad proxy: %s", proxy)
@@ -66,7 +74,7 @@ func NewProxyManager() (*ProxyManager, error) {
 		}
 	}
 
-	log.Printf("✅ Proxy manager initialized with %d proxies, starting at position %d", len(proxies), pm.current)
+	log.Printf("✅ Proxy manager initialized with %d proxies, starting at position %d", len(allProxies), pm.current)
 	return pm, nil
 }
 

@@ -104,15 +104,15 @@ func main() {
 		"1025": "dozer",         // Dozers/Bulldozers
 		"1026": "excavator",     // Excavators
 		"1027": "loader",        // Loaders
-		"1029": "grader",        // Graders
+		"1048": "grader",        // Graders
 		// Add more as you discover them
 	}
 
 	// Sequential page scraping - continue from where you left off
-	baseURL := "https://www.machinerytrader.com/listings/search?Category=1028&page="
-	currentCategory := categoryMap["1028"] // Extract category from URL
-	startPage := 95                        // Continue from where you left off
-	maxPages := 200                        // Process up to page 200
+	baseURL := "https://www.machinerytrader.com/listings/search?Category=1048&page="
+	currentCategory := categoryMap["1048"] // Extract category from URL
+	startPage := 111                       // Continue from where you left off
+	maxPages := 151                        // Process up to page 200
 	maxConsecutiveFailures := 5            // Stop if we get 5 consecutive failures
 
 	log.Printf("Starting sequential multi-page OCR scraper from page %d", startPage)

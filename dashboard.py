@@ -20,6 +20,18 @@ import re
 from datetime import datetime
 import openai
 
+# Import CRM features
+try:
+    from crm_features import (
+        CRMManager, render_sales_rep_selector, render_territory_assignment,
+        render_call_campaign_manager, render_email_integration,
+        render_contact_timeline, add_crm_navigation
+    )
+    CRM_ENABLED = True
+except ImportError:
+    CRM_ENABLED = False
+    print("CRM features not available - install sendgrid: pip install sendgrid")
+
 # Configure Streamlit page
 st.set_page_config(
     page_title="Equipment Seller Database Dashboard",
@@ -165,9 +177,34 @@ def main():
     if not check_password():
         return
     
+    # CRM Mode Selection (if available)
+    if CRM_ENABLED:
+        rep_id, rep_name = render_sales_rep_selector()
+        st.session_state['rep_name'] = rep_name
+        crm_mode = add_crm_navigation()
+        
+        # Handle CRM modes
+        if crm_mode == "Territory Management":
+            analyzer = DashboardAnalyzer()
+            render_territory_assignment(analyzer.df)
+            return
+        elif crm_mode == "Call Campaign":
+            analyzer = DashboardAnalyzer()
+            render_call_campaign_manager(analyzer.df)
+            return
+        elif crm_mode == "Email Marketing":
+            render_email_integration()
+            return
+        elif crm_mode == "Analytics":
+            # Fall through to regular dashboard with CRM metrics
+            pass
+    
     # Dashboard Mode Selector
     st.markdown("# Equipment Seller Database Dashboard")
-    st.markdown("**Authorized Access - Analytics Portal**")
+    if CRM_ENABLED:
+        st.markdown(f"**Authorized Access - Analytics Portal** | Logged in as: {st.session_state.get('rep_name', 'Admin')}")
+    else:
+        st.markdown("**Authorized Access - Analytics Portal**")
     
     # Creative Mode Selection UI
     st.markdown("### Choose Your Analytics Experience")
@@ -439,15 +476,19 @@ def general_analytics_dashboard(analyzer):
     
     with col2:
         high_value_count = len(filtered_df[filtered_df['priority_level'].isin(['Premium', 'High'])])
-        st.metric("High-Value Contacts", f"{high_value_count:,}")
+        st.metric("High-Value Contacts", f"{high_value_count:,}", 
+                 help="Dealers with highest business potential - call these first!")
     
     with col3:
         total_listings = filtered_df['total_listings'].sum()
-        st.metric("Total Listings", f"{total_listings:,}")
+        st.metric("Total Listings", f"{total_listings:,}",
+                 help="Total equipment listings across all dealers")
     
     with col4:
         avg_listings = filtered_df['total_listings'].mean()
-        st.metric("Avg Listings/Contact", f"{avg_listings:.1f}")
+        time_saved = len(filtered_df) * 2  # Assume 2 minutes per manual lookup
+        st.metric("Time Saved", f"{time_saved:,} min", 
+                 help="Estimated time saved vs manual CSV analysis")
     
     # Use native Streamlit components for better compatibility
     

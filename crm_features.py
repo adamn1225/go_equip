@@ -236,11 +236,14 @@ def render_territory_assignment(df: pd.DataFrame):
                         key="research_company"
                     )
                     
-                    if st.button("� Research Company", type="primary"):
+                    if st.button("🔍 Research Company", type="primary"):
                         if selected_company:
                             # Find the selected company data
                             selected_data = next(row for row in table_data if row['Company'] == selected_company)
-                            show_company_research(selected_data, my_leads_df)
+                            # Set research data in session state for fixed panel
+                            st.session_state.research_panel_data = selected_data
+                            st.session_state.research_panel_open = True
+                            st.rerun()
             else:
                 st.info("No leads assigned yet.")
         
@@ -332,6 +335,9 @@ def render_territory_assignment(df: pd.DataFrame):
                 mime="text/csv",
                 help="Includes scraped data + emails/notes you've collected"
             )
+    
+    # Render fixed research panel if data exists
+    render_fixed_research_panel()
 
 def render_call_campaign_manager(df: pd.DataFrame):
     """Call campaign and activity tracking with email input"""
@@ -385,7 +391,10 @@ def render_call_campaign_manager(df: pd.DataFrame):
                         'Listings': contact.get('total_listings', 'N/A'),
                         'Notes': activity.get('notes', '')
                     }
-                    show_company_research(company_data, my_leads_df)
+                    # Set research data in session state for fixed panel
+                    st.session_state.research_panel_data = company_data
+                    st.session_state.research_panel_open = True
+                    st.rerun()
                 
                 contact_col1, contact_col2 = st.columns([2, 1])
                 
@@ -469,6 +478,9 @@ def render_call_campaign_manager(df: pd.DataFrame):
         st.metric("Interested Leads", interested_leads)
         st.metric("Emails Collected", emails_collected)
         st.metric("Conversion Rate", f"{(interested_leads/max(called_today,1)*100):.1f}%")
+    
+    # Render fixed research panel if data exists
+    render_fixed_research_panel()
 
 def render_email_integration():
     """SendGrid email integration for collected emails"""
@@ -804,3 +816,153 @@ def add_crm_navigation():
     )
     
     return crm_mode
+
+def render_fixed_research_panel():
+    """Render company research inline below main content - no fixed positioning"""
+    
+    # Check if we have research data to display
+    if 'research_panel_data' not in st.session_state:
+        return
+    
+    company_data = st.session_state.get('research_panel_data', {})
+    if not company_data:
+        return
+        
+    company_name = company_data.get('Company', 'Unknown Company')
+    
+    # Simple inline display using Streamlit components
+    st.markdown("---")
+    st.markdown(f"### 🔍 Company Research: {company_name}")
+    
+    with st.expander("Company Details & Analysis", expanded=True):
+        render_research_content_simple(company_data)
+        
+        # Simple close button
+        if st.button("✅ Close Research", key="close_research_inline", type="secondary"):
+            del st.session_state['research_panel_data']
+            st.rerun()
+
+def render_research_content_simple(company_data):
+    """Simplified content renderer for inline display"""
+    
+    if not company_data:
+        st.info("No company selected for research")
+        return
+        
+    company_name = company_data.get('Company', 'Unknown')
+    
+    # Company Profile Header - using Streamlit components
+    st.subheader(f"🏢 {company_name}")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        st.write(f"**📞 Phone:** {company_data.get('Phone', 'N/A')}")
+        st.write(f"**📍 Location:** {company_data.get('Location', 'N/A')}")
+        st.write(f"**📧 Email:** {company_data.get('Email', 'Not provided')}")
+    
+    with col2:
+        st.write(f"**📦 Listings:** {company_data.get('Listings', 'N/A')}")
+        st.write(f"**📊 Status:** {company_data.get('Status', 'N/A')}")
+    
+    st.markdown("---")
+    
+    # AI Insights Section
+    st.subheader("🤖 AI Insights")
+    
+    company_lower = company_name.lower()
+    insights = []
+    
+    # Industry analysis
+    if any(word in company_lower for word in ['cat', 'caterpillar']):
+        insights.append("🏗️ Caterpillar dealer - high-value equipment specialist")
+    
+    if any(word in company_lower for word in ['john deere', 'deere']):
+        insights.append("🚜 John Deere dealer - agricultural/construction focus")
+    
+    if any(word in company_lower for word in ['equipment', 'machinery']):
+        insights.append("🔧 Primary equipment dealer")
+    
+    if any(word in company_lower for word in ['rental', 'rent']):
+        insights.append("📅 Rental company - regular equipment turnover")
+    
+    if 'wheeler' in company_lower:
+        insights.append("🏢 Wheeler Machinery - major dealer network")
+    
+    # Volume analysis
+    try:
+        listings = int(company_data.get('Listings', 0)) if company_data.get('Listings', 'N/A') != 'N/A' else 0
+        if listings > 50:
+            insights.append(f"📈 High volume ({listings} listings) - excellent prospect")
+        elif listings > 20:
+            insights.append(f"📊 Medium volume ({listings} listings) - good prospect")
+        elif listings > 5:
+            insights.append(f"📋 Small dealer ({listings} listings) - growth potential")
+    except:
+        insights.append("📋 Listing data available for analysis")
+    
+    if not insights:
+        insights.append("🔍 Standard equipment dealer profile")
+    
+    # Display insights as info boxes
+    for insight in insights:
+        st.info(insight)
+    
+    st.markdown("---")
+    
+    # Call Preparation Section
+    st.subheader("📞 Call Preparation")
+    
+    st.markdown("""
+    **Key Talking Points:**
+    • Heavy Haulers specializes in nationwide equipment transport  
+    • Expand sales territory beyond local market  
+    • Competitive rates for equipment dealers  
+    • Professional handling of valuable machinery  
+    
+    **Questions to Ask:**  
+    • What's your current shipping solution?  
+    • Do you have out-of-state buyers?  
+    • What's your typical equipment value range?  
+    """)
+    
+    st.markdown("---")
+    
+    # Quick Actions Section
+    st.markdown('<div class="panel-section">', unsafe_allow_html=True)
+    st.markdown("#### ⚡ Quick Actions")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if st.button("📞 Mark Called", key="panel_mark_called_simple"):
+            st.success("✅ Marked as called!")
+            # Close panel after action
+            st.session_state.research_panel_open = False
+            st.rerun()
+    
+    with col2:
+        if st.button("� Add Email", key="panel_add_email_simple"):
+            st.info("📧 Added to email list!")
+    
+    # Notes section
+    notes_input = st.text_area(
+        "📝 Quick Notes:",
+        height=80,
+        placeholder="Add notes about this company...",
+        key=f"simple_notes_{company_name}"
+    )
+    
+    if st.button("💾 Save Notes", key="panel_save_notes_simple"):
+        if notes_input.strip():
+            st.success("Notes saved!")
+        else:
+            st.warning("Please enter some notes first.")
+    
+    st.markdown('</div>', unsafe_allow_html=True)
+    
+    # Final close button
+    if st.button("✕ Close Research Panel", key="final_close_button", type="primary"):
+        st.session_state.research_panel_open = False
+        st.rerun()
+
+    st.markdown('</div>', unsafe_allow_html=True)

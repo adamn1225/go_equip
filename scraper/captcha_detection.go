@@ -120,7 +120,7 @@ func (d *CAPTCHADetector) checkScreenshotMetadata(screenshotPath string) bool {
 }
 
 // analyzeImageForCAPTCHA performs basic image analysis
-func (d *CAPTCHADetector) analyzeImageForCAPTCHA(screenshotPath string) bool {
+func (d *CAPTCHADetector) analyzeImageForCAPTCHA(_ string) bool {
 	// This is where you could implement:
 	// 1. OCR on the image to look for CAPTCHA text
 	// 2. Computer vision to detect CAPTCHA UI elements

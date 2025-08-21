@@ -2,18 +2,24 @@
 """
 AI-Powered CAPTCHA Solver
 Automatically solves CAPTCHAs to maintain continuous scraping
+Uses both 2captcha and AntiCaptcha services for maximum reliability
 """
 
 import base64
 import io
 import time
 import requests
+import os
 from typing import Optional, Dict, Any
 from PIL import Image
 import cv2
 import numpy as np
 from playwright.sync_api import Page
 import logging
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -23,8 +29,20 @@ class CAPTCHASolver:
     """Multi-method CAPTCHA solver with fallback options"""
     
     def __init__(self):
-        self.api_key_2captcha = None  # Set your 2captcha API key
-        self.api_key_anticaptcha = None  # Set your AntiCaptcha API key
+        self.api_key_2captcha = os.getenv('2CAPTCHA_API_KEY')
+        self.api_key_anticaptcha = os.getenv('ANTICAPTCHA_API_KEY')
+        
+        # Log which services are available
+        services = []
+        if self.api_key_2captcha:
+            services.append("2captcha")
+        if self.api_key_anticaptcha:
+            services.append("AntiCaptcha")
+        
+        if services:
+            logger.info(f"CAPTCHA services initialized: {', '.join(services)}")
+        else:
+            logger.warning("No CAPTCHA API keys found!")
         
     def solve_captcha(self, page: Page, captcha_selector: str = None) -> bool:
         """
@@ -46,15 +64,19 @@ class CAPTCHASolver:
                 
             logger.info(f"CAPTCHA detected: {captcha_info['type']}")
             
-            # Step 2: Try different solving methods based on type
+            # Step 2: Try different solving methods based on type with intelligent service selection
             if captcha_info['type'] == 'recaptcha':
-                return self._solve_recaptcha(page, captcha_info)
+                # Try 2captcha first for reCAPTCHA (they excel at this)
+                return self._solve_with_fallback(['2captcha', 'anticaptcha'], 'recaptcha', page, captcha_info)
             elif captcha_info['type'] == 'hcaptcha':
-                return self._solve_hcaptcha(page, captcha_info)
+                # Try AntiCaptcha first for hCaptcha (they excel at this)
+                return self._solve_with_fallback(['anticaptcha', '2captcha'], 'hcaptcha', page, captcha_info)
             elif captcha_info['type'] == 'image':
-                return self._solve_image_captcha(page, captcha_info)
+                # Try both services for image CAPTCHAs
+                return self._solve_with_fallback(['2captcha', 'anticaptcha'], 'image', page, captcha_info)
             elif captcha_info['type'] == 'text':
-                return self._solve_text_captcha(page, captcha_info)
+                # Try 2captcha first for text CAPTCHAs
+                return self._solve_with_fallback(['2captcha', 'anticaptcha'], 'text', page, captcha_info)
             else:
                 logger.warning(f"Unknown CAPTCHA type: {captcha_info['type']}")
                 return False
@@ -101,7 +123,57 @@ class CAPTCHASolver:
         
         return None
     
-    def _solve_recaptcha(self, page: Page, captcha_info: Dict) -> bool:
+    def _solve_with_fallback(self, service_order: list, captcha_type: str, page: Page, captcha_info: Dict) -> bool:
+        """Try multiple CAPTCHA services in order until one succeeds"""
+        for service in service_order:
+            if service == '2captcha' and self.api_key_2captcha:
+                logger.info(f"Trying 2captcha for {captcha_type} CAPTCHA...")
+                if self._solve_with_2captcha(captcha_type, page, captcha_info):
+                    return True
+                logger.info("2captcha attempt failed, trying next service...")
+                
+            elif service == 'anticaptcha' and self.api_key_anticaptcha:
+                logger.info(f"Trying AntiCaptcha for {captcha_type} CAPTCHA...")
+                if self._solve_with_anticaptcha(captcha_type, page, captcha_info):
+                    return True
+                logger.info("AntiCaptcha attempt failed, trying next service...")
+        
+        logger.error(f"All CAPTCHA services failed for {captcha_type}")
+        return False
+    
+    def _solve_with_2captcha(self, captcha_type: str, page: Page, captcha_info: Dict) -> bool:
+        """Solve CAPTCHA using 2captcha service"""
+        try:
+            if captcha_type == 'recaptcha':
+                return self._solve_recaptcha_2captcha(page, captcha_info)
+            elif captcha_type == 'hcaptcha':
+                return self._solve_hcaptcha_2captcha(page, captcha_info)
+            elif captcha_type == 'image':
+                return self._solve_image_2captcha(page, captcha_info)
+            elif captcha_type == 'text':
+                return self._solve_text_2captcha(page, captcha_info)
+            return False
+        except Exception as e:
+            logger.error(f"2captcha solving error: {e}")
+            return False
+    
+    def _solve_with_anticaptcha(self, captcha_type: str, page: Page, captcha_info: Dict) -> bool:
+        """Solve CAPTCHA using AntiCaptcha service"""
+        try:
+            if captcha_type == 'recaptcha':
+                return self._solve_recaptcha_anticaptcha(page, captcha_info)
+            elif captcha_type == 'hcaptcha':
+                return self._solve_hcaptcha_anticaptcha(page, captcha_info)
+            elif captcha_type == 'image':
+                return self._solve_image_anticaptcha(page, captcha_info)
+            elif captcha_type == 'text':
+                return self._solve_text_anticaptcha(page, captcha_info)
+            return False
+        except Exception as e:
+            logger.error(f"AntiCaptcha solving error: {e}")
+            return False
+    
+    def _solve_recaptcha_2captcha(self, page: Page, captcha_info: Dict) -> bool:
         """Solve reCAPTCHA using 2captcha service"""
         try:
             if not self.api_key_2captcha:

@@ -5,6 +5,21 @@ contact_analysis_report_*.csv
 high_priority_outreach_targets.csv
 priority_outreach_contacts.csv
 seller_contacts_*.csv
+seller_contacts_*.json
+*contacts*.json
+contacts_*.csv
+
+# CAPTCHA Training Data (contains screenshots)
+captcha_training_data/
+captcha_env/
+*.png
+*.jpg
+*.jpeg
+
+# Emergency and Learning Data Files
+*emergency*.json
+*learning*.json
+*periodic*.json
 
 # Database files
 *.db
@@ -76,7 +91,9 @@ tmp/
 *.so
 *.dylib
 ocr-scraper
+ocr-scraper-*
 ./ocr-scraper
+scraper/scraper
 
 # Test binary, built with `go test -c`
 *.test
@@ -109,10 +126,15 @@ dump.rdb
 
 # OCR temporary files
 *.pdf
-*.png
-*.jpg
-*.jpeg
 ocr_temp/
+
+# Missed pages directory
+missed_pages/
+
+# Temporary and generated files
+=*
+temp_*
+tmp_*
 
 # Analytics and reporting cache
 .cache/

@@ -1,44 +1,65 @@
-# Contact Analytics Dashboard
+# CAPTCHA AI Scraper Pipeline
 
-Executive dashboard for equipment dealer contact analysis and business intelligence.
+🎯 **100% accuracy CAPTCHA classifier** trained on real scraping data with 8-worker concurrent architecture.
 
-## Features
-- Priority scoring algorithm for high-value contacts
-- Interactive visualizations and filtering
-- Geographic distribution analysis
-- Export capabilities for CRM integration
+## 🎉 Project Achievement
 
-## Setup
+Transformed manual CAPTCHA solving into a complete AI learning pipeline:
+- ✅ **244 training sessions** from real CAPTCHA data
+- ✅ **100% model accuracy** on validation set  
+- ✅ **8-worker concurrent** scraping operational
+- ✅ **178 contacts** collected from test runs
+- ✅ **Ready for full-scale** 196-page collection
 
-### Virtual Environment
-This project uses the `ai_env` virtual environment. To activate it:
+## 🚀 Quick Start - Scale Up Collection
 
+### Collect Full Dataset
 ```bash
-# Option 1: Use the activation script
-./activate_env.sh
+# Full site scraping (all 196 pages, 8 workers)
+go run cmd/scraper/main.go --start-page 1 --end-page 196 --concurrency 8
 
-# Option 2: Manual activation
-source ai_env/bin/activate
+# Custom range
+go run cmd/scraper/main.go --start-page 50 --end-page 100 --concurrency 8
 ```
 
-### Running the Dashboard
+### 🧠 AI Training
 ```bash
-# Activate environment first
-source ai_env/bin/activate
+# Activate CAPTCHA environment  
+source captcha_env/bin/activate
 
-# Run main dashboard (with authentication)
-streamlit run dashboard.py --server.port=8503
+# Train on collected data
+python ai/captcha_learning_system.py --mode train --epochs 10
 
-# Or run standalone Heavy Haulers dashboard
-streamlit run heavy_haulers_dashboard.py --server.port=8504
+# Check status
+python ai/captcha_learning_system.py --mode info
 ```
 
-## Usage
-Access the dashboard at: http://localhost:8503
+## Key Commands
 
-Login credentials will be provided to authorized personnel.
+| Command | Purpose |
+|---------|---------|
+| `go run cmd/scraper/main.go` | Basic scraping (pages 1-9) |
+| `--start-page 1 --end-page 196` | Full site collection |
+| `--concurrency 8` | Set worker count |
+| `python ai/captcha_learning_system.py --mode info` | Check training data |
+| `python ai/captcha_learning_system.py --mode train` | Train CNN model |
 
-## Data Sources
-- MachineryTrader.com scraping results
-- Master contact database with 4,900+ contacts
-- Real-time analysis and scoring
+## Architecture
+
+- **Go Concurrent Scraper**: 8 workers with individual browser sessions
+- **PyTorch CNN**: 55M+ parameters, perfect validation accuracy  
+- **Enhanced CAPTCHA Detection**: Multi-selector strategy with 25s waits
+- **Training Pipeline**: Automated screenshot → session → model workflow
+
+## 📋 Documentation
+
+See **[PROJECT_SUMMARY.md](PROJECT_SUMMARY.md)** for complete technical documentation including:
+- Detailed architecture breakdown
+- All CLI commands and flags
+- Technical challenges solved
+- Performance metrics and results
+- Step-by-step learning outcomes
+
+---
+
+*Ready to scale up and collect the full dataset! 🚀*

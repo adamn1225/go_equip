@@ -40,6 +40,8 @@ class LightweightCAPTCHASolver:
         try:
             if captcha_type == "recaptcha" and site_key:
                 return self._solve_recaptcha_v2(site_url, site_key)
+            elif captcha_type == "hcaptcha" and site_key:
+                return self._solve_hcaptcha(site_url, site_key)
             else:
                 logger.warning(f"Unsupported CAPTCHA type: {captcha_type}")
                 return None
@@ -104,6 +106,64 @@ class LightweightCAPTCHASolver:
             return None
         except Exception as e:
             logger.error(f"reCAPTCHA solving failed: {e}")
+            return None
+
+    def _solve_hcaptcha(self, page_url: str, site_key: str) -> Optional[str]:
+        """Solve hCaptcha using 2captcha"""
+        try:
+            # Submit CAPTCHA to 2captcha
+            submit_response = requests.post(
+                "http://2captcha.com/in.php",
+                data={
+                    'key': self.api_key_2captcha,
+                    'method': 'hcaptcha',
+                    'sitekey': site_key,
+                    'pageurl': page_url
+                },
+                timeout=30
+            )
+            
+            if not submit_response.text.startswith('OK|'):
+                logger.error(f"2captcha hCaptcha submission failed: {submit_response.text}")
+                return None
+            
+            captcha_id = submit_response.text.split('|')[1]
+            logger.info(f"hCaptcha submitted to 2captcha with ID: {captcha_id}")
+            
+            # Poll for solution
+            max_attempts = 24  # 2 minutes with 5-second intervals
+            for attempt in range(max_attempts):
+                time.sleep(5)
+                
+                result_response = requests.get(
+                    "http://2captcha.com/res.php",
+                    params={
+                        'key': self.api_key_2captcha,
+                        'action': 'get',
+                        'id': captcha_id
+                    },
+                    timeout=10
+                )
+                
+                if result_response.text == 'CAPCHA_NOT_READY':
+                    logger.info(f"hCaptcha solving in progress... (attempt {attempt + 1}/{max_attempts})")
+                    continue
+                elif result_response.text.startswith('OK|'):
+                    solution = result_response.text.split('|')[1]
+                    logger.info("hCaptcha solved successfully!")
+                    return solution
+                else:
+                    logger.error(f"2captcha hCaptcha error: {result_response.text}")
+                    return None
+            
+            logger.error("2captcha hCaptcha timeout - solution not received in time")
+            return None
+            
+        except requests.RequestException as e:
+            logger.error(f"Network error during hCaptcha solving: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"hCaptcha solving failed: {e}")
             return None
 
 # Simple Flask-like HTTP server using built-in modules

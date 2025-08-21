@@ -3,10 +3,12 @@ package main
 import (
 	"encoding/csv"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"log"
 	"math/rand"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/adamn1225/hybrid-ocr-agent/scraper/internal/models"
@@ -108,133 +110,183 @@ func exportToJSON(sellerInfos []map[string]string, filename string, category str
 }
 
 func main() {
+	// Command line flags
+	var (
+		startPageFlag   = flag.Int("start-page", 1, "Starting page number")
+		endPageFlag     = flag.Int("end-page", 197, "Ending page number")
+		concurrencyFlag = flag.Int("concurrency", 4, "Number of concurrent workers")
+	)
+	flag.Parse()
+
 	// MachineryTrader category mapping
 	categoryMap := map[string]string{
-		"1040": "Lifts",              //next after Off-Highway Trucks
-		"1049": "Off-Highway Trucks", // current
-		"1035": "Forestry Equipment", // Forestry Equipment
-		"1028": "Drills",             // Scrapers
-		"1060": "wheel loaders",      // Agriculture
-		"1015": "cranes",             // Mini Excavators
-		"1025": "dozer",              // Dozers/Bulldozers
-		"1026": "excavator",          // Excavators
-		"1048": "grader",             // Graders
-		"1027": "loader",             // Loaders
-		// Add more as you discover them
+		"1007": "Asphalt/Pavers",
+		"1040": "Lifts",
+		"1046": "Backhoes",
+		"1049": "Off-Highway Trucks",
+		"1035": "Forestry Equipment",
+		"1028": "Drills",
+		"1060": "wheel loaders",
+		"1015": "cranes",
+		"1025": "dozer",
+		"1026": "excavator",
+		"1048": "grader",
+		"1027": "loader",
+		"1055": "skid steers",
 	}
 
-	// Sequential page scraping - continue from where you left off
-	baseURL := "https://www.machinerytrader.com/listings/search?Category=1049&page="
-	currentCategory := categoryMap["1049"] // Extract category from URL
-	startPage := 67                        // Continue from where you left off
-	maxPages := 300                        // Process up to page 215
-	maxConsecutiveFailures := 5            // Stop if we get 5 consecutive failures
+	// Configuration for concurrent scraping - Backhoes Category
+	baseURL := "https://www.machinerytrader.com/listings/search?Category=1055&page="
+	currentCategory := categoryMap["1046"] // Backhoes
+	startPage := *startPageFlag            // Use command line flag
+	maxPages := *endPageFlag               // Use command line flag
+	concurrency := *concurrencyFlag        // Use command line flag
 
-	log.Printf("Starting sequential multi-page OCR scraper from page %d", startPage)
-	log.Printf("Scraping category: %s (Category=1049)", currentCategory)
-	log.Printf("Target: Process through page %d", maxPages)
-	log.Println("Proxy rotation enabled - persistent session with proxy switching")
-	log.Println("Will continue scraping until all pages are processed or excessive failures occur...")
+	log.Printf("🚀 Starting OCR scraper - CAPTCHA Learning Mode (%dx Concurrent)", concurrency)
+	log.Printf("📊 Category: %s", currentCategory)
+	log.Printf("📄 Pages: %d to %d with %d workers", startPage, maxPages, concurrency)
+	log.Printf("🧠 Ready to collect CAPTCHA learning data!")
+	log.Println("🔄 Manual CAPTCHA solving - each one helps train the AI!")
 
 	var allSellerInfo []map[string]string
-	consecutiveFailures := 0
+	var mu sync.Mutex // Protect allSellerInfo from concurrent access
 
 	// Add defer to ensure data is saved even if script crashes
 	defer func() {
+		mu.Lock()
 		if len(allSellerInfo) > 0 {
-			log.Printf("Emergency save triggered - saving %d contacts...", len(allSellerInfo))
+			log.Printf("💾 Emergency save triggered - saving %d contacts...", len(allSellerInfo))
 			timestamp := time.Now().Format("20060102_150405")
 			csvFile := fmt.Sprintf("seller_contacts_emergency_%s.csv", timestamp)
 			jsonFile := fmt.Sprintf("seller_contacts_emergency_%s.json", timestamp)
 
 			exportToCSV(allSellerInfo, csvFile)
 			exportToJSON(allSellerInfo, jsonFile, currentCategory)
-			log.Printf("Emergency data saved to %s and %s", csvFile, jsonFile)
+			log.Printf("✅ Emergency data saved to %s and %s", csvFile, jsonFile)
 		}
-		scraper.CloseBrowserSession()
+		mu.Unlock()
+		// Note: Worker browser sessions are closed in defer functions
 	}()
 
-	// Initialize browser session once at start
-	err := scraper.InitializeBrowserSession()
-	if err != nil {
-		log.Fatalf("Failed to initialize browser session: %v", err)
+	// Initialize browser session once at start (remove this since we'll use worker-specific sessions)
+	// err := scraper.InitializeBrowserSession()
+	// if err != nil {
+	//	log.Fatalf("Failed to initialize browser session: %v", err)
+	// }
+
+	// Create channels for work distribution
+	pageChannel := make(chan int, maxPages)
+	var wg sync.WaitGroup
+
+	// Fill the page channel
+	for page := startPage; page <= maxPages; page++ {
+		pageChannel <- page
 	}
+	close(pageChannel)
 
-	// Process pages sequentially
-	for currentPage := startPage; currentPage <= maxPages; currentPage++ {
-		targetURL := fmt.Sprintf("%s%d", baseURL, currentPage)
-		log.Printf("Processing page %d: %s", currentPage, targetURL)
+	// Start concurrent workers
+	for worker := 1; worker <= concurrency; worker++ {
+		wg.Add(1)
+		go func(workerID int) {
+			defer wg.Done()
+			log.Printf("🔧 Worker %d started", workerID)
 
-		// Create job for this page
-		job := models.Job{URL: targetURL}
-
-		// Take screenshot with Playwright (uses persistent session with proxy rotation)
-		imagePath := scraper.TakeScreenshotPlaywright(job.URL)
-
-		if imagePath == "" {
-			log.Printf("Failed to take screenshot for page %d", currentPage)
-			consecutiveFailures++
-
-			if consecutiveFailures >= maxConsecutiveFailures {
-				log.Printf("Too many consecutive failures (%d). Stopping scraper.", consecutiveFailures)
-				break
+			// Initialize worker-specific browser session
+			if err := scraper.InitializeWorkerBrowserSession(workerID, nil); err != nil {
+				log.Printf("❌ Worker %d: Failed to initialize browser session: %v", workerID, err)
+				return
 			}
-			continue
-		}
 
-		// Reset consecutive failures on success
-		consecutiveFailures = 0
+			defer func() {
+				scraper.CloseWorkerBrowserSession(workerID)
+			}()
 
-		// Update job with image path
-		job.ImagePath = imagePath
+			for currentPage := range pageChannel {
+				targetURL := fmt.Sprintf("%s%d", baseURL, currentPage)
+				log.Printf("🔧 Worker %d processing page %d: %s", workerID, currentPage, targetURL)
 
-		// Enqueue job for processing
-		if err := queue.Enqueue(job); err != nil {
-			log.Printf("Error enqueueing job: %v", err)
-			continue
-		}
+				// Create job for this page
+				scraperJob := models.Job{URL: targetURL}
 
-		// Process OCR
-		log.Printf("Processing OCR for page %d...", currentPage)
-		text, err := ocrworker.ExtractTextFromImage(imagePath)
-		if err != nil {
-			log.Printf("OCR processing failed for page %d: %v", currentPage, err)
-			continue
-		}
+				// Take screenshot with CAPTCHA handling using worker-specific session!
+				imagePath := scraper.TakeScreenshotPlaywrightWorker(workerID, targetURL)
 
-		// Extract seller information
-		sellerInfoList := ocrworker.ExtractSellerInfo(text, targetURL)
-		log.Printf("Page %d completed: Found %d contacts", currentPage, len(sellerInfoList))
+				if imagePath == "" {
+					log.Printf("❌ Worker %d failed to take screenshot for page %d", workerID, currentPage)
+					continue
+				}
 
-		// Add to our collection
-		allSellerInfo = append(allSellerInfo, sellerInfoList...)
+				// Update job with image path
+				scraperJob.ImagePath = imagePath
 
-		// Add delay between pages to be respectful to the server
-		delay := 3 + rand.Intn(3) // 3-8 seconds between pages
-		log.Printf("Waiting %d seconds before next page...", delay)
-		time.Sleep(time.Duration(delay) * time.Second)
+				// Enqueue job for processing
+				log.Printf("📦 Worker %d enqueueing job for page %d...", workerID, currentPage)
+				if err := queue.Enqueue(scraperJob); err != nil {
+					log.Printf("❌ Worker %d error enqueueing job: %v", workerID, err)
+					continue
+				}
+
+				// Process OCR
+				text, err := ocrworker.ExtractTextFromImage(imagePath)
+				if err != nil {
+					log.Printf("❌ Worker %d OCR processing failed: %v", workerID, err)
+					continue
+				}
+
+				// Extract seller information
+				sellerInfoList := ocrworker.ExtractSellerInfo(text, targetURL)
+
+				// Safely append to shared slice
+				mu.Lock()
+				allSellerInfo = append(allSellerInfo, sellerInfoList...)
+				totalContacts := len(allSellerInfo)
+				mu.Unlock()
+
+				log.Printf("✅ Worker %d completed page %d: Found %d contacts (Total: %d)",
+					workerID, currentPage, len(sellerInfoList), totalContacts)
+
+				// Periodic save every 200 contacts (across all workers)
+				if totalContacts > 0 && totalContacts%200 == 0 {
+					mu.Lock()
+					if len(allSellerInfo) == totalContacts { // Double-check we're the one hitting the milestone
+						log.Printf("💾 Periodic save at %d contacts - saving data...", totalContacts)
+						timestamp := time.Now().Format("20060102_150405")
+						csvFile := fmt.Sprintf("seller_contacts_periodic_%s_contacts%d.csv", timestamp, totalContacts)
+						jsonFile := fmt.Sprintf("seller_contacts_periodic_%s_contacts%d.json", timestamp, totalContacts)
+
+						exportToCSV(allSellerInfo, csvFile)
+						exportToJSON(allSellerInfo, jsonFile, currentCategory)
+						log.Printf("✅ Periodic data saved to %s and %s", csvFile, jsonFile)
+					}
+					mu.Unlock()
+				}
+
+				// Respectful delay between pages (shorter for concurrent)
+				time.Sleep(time.Duration(1+rand.Intn(2)) * time.Second)
+			}
+			log.Printf("🏁 Worker %d finished", workerID)
+		}(worker)
 	}
 
-	log.Printf("Sequential multi-page scraping completed!")
-	log.Printf("Total pages processed: %d to %d", startPage, maxPages)
-	log.Printf("Total seller contacts found: %d", len(allSellerInfo))
+	// Wait for all workers to complete
+	wg.Wait()
+
+	log.Printf("🎉 Scraping completed!")
+	mu.Lock()
+	log.Printf("📊 Total contacts found: %d", len(allSellerInfo))
 
 	if len(allSellerInfo) > 0 {
-		pagesProcessed := maxPages - startPage + 1
-		avgContactsPerPage := float64(len(allSellerInfo)) / float64(pagesProcessed)
-		log.Printf("Average contacts per page: %.1f", avgContactsPerPage)
-
 		// Export to CSV and JSON
 		timestamp := time.Now().Format("20060102_150405")
-		csvFile := fmt.Sprintf("seller_contacts_%s.csv", timestamp)
-		jsonFile := fmt.Sprintf("seller_contacts_%s.json", timestamp)
+		csvFile := fmt.Sprintf("seller_contacts_learning_%s.csv", timestamp)
+		jsonFile := fmt.Sprintf("seller_contacts_learning_%s.json", timestamp)
 
 		// Export to CSV
 		err := exportToCSV(allSellerInfo, csvFile)
 		if err != nil {
 			log.Printf("Error exporting to CSV: %v", err)
 		} else {
-			log.Printf("CSV exported successfully: %s", csvFile)
+			log.Printf("📄 CSV exported successfully: %s", csvFile)
 		}
 
 		// Export to JSON
@@ -242,11 +294,19 @@ func main() {
 		if err != nil {
 			log.Printf("Error exporting to JSON: %v", err)
 		} else {
-			log.Printf("JSON exported successfully: %s", jsonFile)
-			log.Printf("Category: %s, Site: machinerytrader.com", currentCategory)
+			log.Printf("📦 JSON exported successfully: %s", jsonFile)
+			log.Printf("🏷️  Category: %s, Site: machinerytrader.com", currentCategory)
 		}
-	}
 
-	// Close the persistent browser session
-	scraper.CloseBrowserSession()
+		log.Printf("🧠 CAPTCHA Learning Tip:")
+		log.Printf("   Each CAPTCHA you solved helps train the AI!")
+		log.Printf("   Run the learning system to start training:")
+		log.Printf("   python ai/captcha_learning_system.py --mode collect")
+	}
+	mu.Unlock()
+
+	// Close any remaining worker browser sessions
+	for i := 1; i <= concurrency; i++ {
+		scraper.CloseWorkerBrowserSession(i)
+	}
 }

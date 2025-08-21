@@ -19,12 +19,11 @@ import requests
 try:
     import openai
     OPENAI_AVAILABLE = True
-    # Set OpenAI API key if available
+    # Get OpenAI API key
     openai_key = os.getenv('OPENAI_API_KEY')
-    if openai_key:
-        openai.api_key = openai_key
 except ImportError:
     OPENAI_AVAILABLE = False
+    openai_key = None
 
 # Authentication function (same as before)
 def check_password():
@@ -68,10 +67,11 @@ def check_captcha_solver_status():
 
 def get_ai_insights(data_summary):
     """Generate AI insights using OpenAI"""
-    if not OPENAI_AVAILABLE or not openai.api_key:
+    if not OPENAI_AVAILABLE or not openai_key:
         return None
     
     try:
+        client = openai.OpenAI(api_key=openai_key)
         prompt = f"""
         Analyze this equipment dealer database and provide 3 key business insights:
         
@@ -90,7 +90,7 @@ def get_ai_insights(data_summary):
         Keep each point under 25 words and actionable for equipment sales.
         """
         
-        response = openai.ChatCompletion.create(
+        response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}],
             max_tokens=200,
@@ -230,7 +230,7 @@ def main():
     
     with col3:
         # AI Status
-        if OPENAI_AVAILABLE and openai.api_key:
+        if OPENAI_AVAILABLE and openai_key:
             st.success("🧠 AI Insights: Enabled")
         else:
             st.info("🧠 AI Insights: Disabled")
@@ -296,7 +296,7 @@ def main():
     filtered_df = filtered_df[filtered_df['total_listings'] >= min_listings]
     
     # AI Insights Section (NEW!)
-    if OPENAI_AVAILABLE and openai.api_key:
+    if OPENAI_AVAILABLE and openai_key:
         st.subheader("🧠 AI-Generated Market Insights")
         
         with st.expander("📊 Generate AI Analysis", expanded=False):
@@ -350,7 +350,7 @@ def main():
             st.info("Run: `./start_captcha_solver_lite.sh`")
     
     with col2:
-        if OPENAI_AVAILABLE and openai.api_key:
+        if OPENAI_AVAILABLE and openai_key:
             st.success("🧠 AI Insights\nEnabled")
         else:
             st.info("🧠 AI Insights\nNot Configured")

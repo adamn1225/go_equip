@@ -24,10 +24,10 @@ def test_openai_integration():
         # Test with a simple API call
         try:
             import openai
-            openai.api_key = openai_key
+            client = openai.OpenAI(api_key=openai_key)
             
             # Simple test prompt
-            response = openai.ChatCompletion.create(
+            response = client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[
                     {"role": "user", "content": "Say 'AI integration successful!' in exactly those words."}

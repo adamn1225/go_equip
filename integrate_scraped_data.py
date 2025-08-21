@@ -85,6 +85,13 @@ def integrate_scraped_data(scraped_file, master_file):
         serial_number = contact.get('serial_number', '').strip()
         auction_date = contact.get('auction_date', '').strip()
         
+        # Extract equipment details (NEW!)
+        year = contact.get('year', '').strip()
+        make = contact.get('make', '').strip()
+        model = contact.get('model', '').strip()
+        price = contact.get('price', '').strip()
+        url = contact.get('url', '').strip()
+        
         # Skip contacts without essential info
         if not phone and not company:
             skipped_contacts += 1
@@ -128,6 +135,32 @@ def integrate_scraped_data(scraped_file, master_file):
             
             if location and location not in additional_info.get('alternate_locations', []):
                 additional_info.setdefault('alternate_locations', []).append(location)
+                
+            # Add equipment details to additional info
+            if year:
+                additional_info.setdefault('equipment_years', [])
+                if year not in additional_info['equipment_years']:
+                    additional_info['equipment_years'].append(year)
+                    
+            if make:
+                additional_info.setdefault('equipment_makes', [])
+                if make not in additional_info['equipment_makes']:
+                    additional_info['equipment_makes'].append(make)
+                    
+            if model:
+                additional_info.setdefault('equipment_models', [])
+                if model not in additional_info['equipment_models']:
+                    additional_info['equipment_models'].append(model)
+                    
+            if price:
+                additional_info.setdefault('listing_prices', [])
+                if price not in additional_info['listing_prices']:
+                    additional_info['listing_prices'].append(price)
+                    
+            if url:
+                additional_info.setdefault('listing_urls', [])
+                if url not in additional_info['listing_urls']:
+                    additional_info['listing_urls'].append(url)
             
             # Update contact
             existing_contact['sources'] = sources
@@ -149,7 +182,7 @@ def integrate_scraped_data(scraped_file, master_file):
                     "site": source_site,
                     "category": category,
                     "first_seen": datetime.now().strftime("%Y-%m-%d"),
-                    "page_url": "",
+                    "page_url": url if url else "",
                     "listing_count": 1
                 }],
                 "total_listings": 1,
@@ -158,7 +191,12 @@ def integrate_scraped_data(scraped_file, master_file):
                 "additional_info": {
                     "serial_numbers": [serial_number] if serial_number else [],
                     "auction_dates": [auction_date] if auction_date else [],
-                    "alternate_locations": [location] if location else []
+                    "alternate_locations": [location] if location else [],
+                    "equipment_years": [year] if year else [],
+                    "equipment_makes": [make] if make else [],
+                    "equipment_models": [model] if model else [],
+                    "listing_prices": [price] if price else [],
+                    "listing_urls": [url] if url else []
                 },
                 "contact_priority": "medium",
                 "notes": ""

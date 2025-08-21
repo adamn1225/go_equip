@@ -27,7 +27,7 @@ func exportToCSV(sellerInfos []map[string]string, filename string) error {
 	defer writer.Flush()
 
 	// Write header
-	headers := []string{"Seller/Company", "Location", "Phone", "Email", "Serial Number", "Auction Date", "URL"}
+	headers := []string{"Seller/Company", "Location", "Phone", "Email", "Serial Number", "Auction Date", "Year", "Make", "Model", "Price", "URL"}
 	if err := writer.Write(headers); err != nil {
 		return err
 	}
@@ -41,6 +41,10 @@ func exportToCSV(sellerInfos []map[string]string, filename string) error {
 			info["email"],
 			info["serial_number"],
 			info["auction_date"],
+			info["year"],
+			info["make"],
+			info["model"],
+			info["price"],
 			info["url"],
 		}
 		if err := writer.Write(row); err != nil {
@@ -61,6 +65,10 @@ func exportToJSON(sellerInfos []map[string]string, filename string, category str
 		Email        string `json:"email,omitempty"`
 		SerialNumber string `json:"serial_number,omitempty"`
 		AuctionDate  string `json:"auction_date,omitempty"`
+		Year         string `json:"year,omitempty"`
+		Make         string `json:"make,omitempty"`
+		Model        string `json:"model,omitempty"`
+		Price        string `json:"price,omitempty"`
 		URL          string `json:"url,omitempty"`
 	}
 
@@ -73,6 +81,10 @@ func exportToJSON(sellerInfos []map[string]string, filename string, category str
 			Email:        info["email"],
 			SerialNumber: info["serial_number"],
 			AuctionDate:  info["auction_date"],
+			Year:         info["year"],
+			Make:         info["make"],
+			Model:        info["model"],
+			Price:        info["price"],
 			URL:          info["url"],
 		}
 		contacts = append(contacts, contact)
@@ -98,26 +110,28 @@ func exportToJSON(sellerInfos []map[string]string, filename string, category str
 func main() {
 	// MachineryTrader category mapping
 	categoryMap := map[string]string{
-		"1035": "Forestry Equipment",
-		"1028": "Drills",        // Scrapers
-		"1060": "wheel loaders", // Agriculture
-		"1015": "cranes",        // Mini Excavators
-		"1025": "dozer",         // Dozers/Bulldozers
-		"1026": "excavator",     // Excavators
-		"1048": "grader",        // Graders
-		"1027": "loader",        // Loaders
+		"1040": "Lifts",              //next after Off-Highway Trucks
+		"1049": "Off-Highway Trucks", // current
+		"1035": "Forestry Equipment", // Forestry Equipment
+		"1028": "Drills",             // Scrapers
+		"1060": "wheel loaders",      // Agriculture
+		"1015": "cranes",             // Mini Excavators
+		"1025": "dozer",              // Dozers/Bulldozers
+		"1026": "excavator",          // Excavators
+		"1048": "grader",             // Graders
+		"1027": "loader",             // Loaders
 		// Add more as you discover them
 	}
 
 	// Sequential page scraping - continue from where you left off
-	baseURL := "https://www.machinerytrader.com/listings/search?Category=1035&page="
-	currentCategory := categoryMap["1035"] // Extract category from URL
-	startPage := 163                       // Continue from where you left off
-	maxPages := 215                        // Process up to page 215
+	baseURL := "https://www.machinerytrader.com/listings/search?Category=1049&page="
+	currentCategory := categoryMap["1049"] // Extract category from URL
+	startPage := 67                        // Continue from where you left off
+	maxPages := 300                        // Process up to page 215
 	maxConsecutiveFailures := 5            // Stop if we get 5 consecutive failures
 
 	log.Printf("Starting sequential multi-page OCR scraper from page %d", startPage)
-	log.Printf("Scraping category: %s (Category=1035)", currentCategory)
+	log.Printf("Scraping category: %s (Category=1049)", currentCategory)
 	log.Printf("Target: Process through page %d", maxPages)
 	log.Println("Proxy rotation enabled - persistent session with proxy switching")
 	log.Println("Will continue scraping until all pages are processed or excessive failures occur...")

@@ -92,6 +92,21 @@ class DashboardAnalyzer:
                     'num_sources': len(contact['sources'])
                 }
                 
+                # Extract equipment details from additional_info (NEW!)
+                additional_info = contact.get('additional_info', {})
+                record['equipment_years'] = additional_info.get('equipment_years', [])
+                record['equipment_makes'] = additional_info.get('equipment_makes', [])
+                record['equipment_models'] = additional_info.get('equipment_models', [])
+                record['listing_prices'] = additional_info.get('listing_prices', [])
+                record['listing_urls'] = additional_info.get('listing_urls', [])
+                
+                # Create summary fields for easier analysis
+                record['has_equipment_data'] = bool(record['equipment_years'] or record['equipment_makes'] or record['equipment_models'])
+                record['has_pricing_data'] = bool(record['listing_prices'])
+                record['unique_makes'] = len(set(record['equipment_makes'])) if record['equipment_makes'] else 0
+                record['unique_models'] = len(set(record['equipment_models'])) if record['equipment_models'] else 0
+                record['price_range'] = self._calculate_price_range(record['listing_prices'])
+                
                 # Extract state
                 location = contact['primary_location']
                 if location:
@@ -156,8 +171,47 @@ class DashboardAnalyzer:
         
         if record['email']:
             score += 10
+            
+        # Equipment data bonus (NEW!)
+        if record.get('has_equipment_data', False):
+            score += 15
+            
+        # Pricing data bonus (NEW!)
+        if record.get('has_pricing_data', False):
+            score += 10
         
         return score
+    
+    def _calculate_price_range(self, prices):
+        """Calculate price range category from price list"""
+        if not prices:
+            return "No Pricing"
+        
+        # Extract numeric values from price strings
+        numeric_prices = []
+        for price in prices:
+            try:
+                # Remove $ and commas, convert to float
+                clean_price = float(str(price).replace('$', '').replace(',', ''))
+                numeric_prices.append(clean_price)
+            except (ValueError, AttributeError):
+                continue
+        
+        if not numeric_prices:
+            return "No Pricing"
+        
+        max_price = max(numeric_prices)
+        
+        if max_price < 50000:
+            return "Under $50K"
+        elif max_price < 100000:
+            return "$50K - $100K"
+        elif max_price < 250000:
+            return "$100K - $250K"
+        elif max_price < 500000:
+            return "$250K - $500K"
+        else:
+            return "$500K+"
     
     def _get_priority_level(self, score):
         """Convert score to priority level"""
@@ -432,6 +486,47 @@ def general_analytics_dashboard(analyzer):
     st.sidebar.markdown("---")
     search_term = st.sidebar.text_input("Search Equipment/Company", placeholder="e.g., CAT, John Deere, Excavator")
     
+    # Equipment Data Filters (NEW!)
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### 🔧 Equipment Filters")
+    
+    # Equipment data availability filter
+    equipment_data_options = ['All Contacts', 'With Equipment Data', 'Without Equipment Data']
+    equipment_data_filter = st.sidebar.selectbox("Equipment Data", equipment_data_options)
+    
+    # Price data filter
+    pricing_options = ['All Contacts', 'With Pricing', 'Without Pricing']
+    pricing_filter = st.sidebar.selectbox("Pricing Data", pricing_options)
+    
+    # Price range filter (only show if there are contacts with pricing)
+    if analyzer.df['has_pricing_data'].any():
+        price_ranges = sorted(analyzer.df[analyzer.df['has_pricing_data']]['price_range'].unique())
+        if price_ranges:
+            price_range_options = ['All Price Ranges'] + price_ranges
+            selected_price_range = st.sidebar.selectbox("Price Range", price_range_options)
+        else:
+            selected_price_range = 'All Price Ranges'
+    else:
+        selected_price_range = 'All Price Ranges'
+    
+    # Equipment make filter (only show if there are contacts with makes)
+    if analyzer.df['equipment_makes'].apply(len).sum() > 0:
+        all_makes = []
+        for makes_list in analyzer.df['equipment_makes']:
+            all_makes.extend(makes_list)
+        unique_makes = sorted(set(all_makes))
+        if unique_makes:
+            make_options = ['All Makes'] + unique_makes
+            selected_make = st.sidebar.selectbox("Equipment Make", make_options)
+        else:
+            selected_make = 'All Makes'
+    else:
+        selected_make = 'All Makes'
+    
+    # Standard filters
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### 📊 Standard Filters")
+    
     # Priority filter
     priority_options = ['All'] + list(analyzer.df['priority_level'].unique())
     selected_priority = st.sidebar.selectbox("Priority Level", priority_options)
@@ -458,8 +553,31 @@ def general_analytics_dashboard(analyzer):
             filtered_df['categories'].str.contains(search_term, case=False, na=False) |
             filtered_df['primary_location'].str.contains(search_term, case=False, na=False)
         )
-        filtered_df = filtered_df[search_mask]
+        # Also search in equipment makes and models
+        equipment_mask = filtered_df.apply(lambda row: 
+            any(search_term.lower() in str(make).lower() for make in row.get('equipment_makes', [])) or
+            any(search_term.lower() in str(model).lower() for model in row.get('equipment_models', [])), axis=1)
+        filtered_df = filtered_df[search_mask | equipment_mask]
     
+    # Equipment data filters (NEW!)
+    if equipment_data_filter == 'With Equipment Data':
+        filtered_df = filtered_df[filtered_df['has_equipment_data'] == True]
+    elif equipment_data_filter == 'Without Equipment Data':
+        filtered_df = filtered_df[filtered_df['has_equipment_data'] == False]
+    
+    if pricing_filter == 'With Pricing':
+        filtered_df = filtered_df[filtered_df['has_pricing_data'] == True]
+    elif pricing_filter == 'Without Pricing':
+        filtered_df = filtered_df[filtered_df['has_pricing_data'] == False]
+    
+    if selected_price_range != 'All Price Ranges':
+        filtered_df = filtered_df[filtered_df['price_range'] == selected_price_range]
+    
+    if selected_make != 'All Makes':
+        make_mask = filtered_df.apply(lambda row: selected_make in row.get('equipment_makes', []), axis=1)
+        filtered_df = filtered_df[make_mask]
+    
+    # Standard filters
     if selected_priority != 'All':
         filtered_df = filtered_df[filtered_df['priority_level'] == selected_priority]
     
@@ -480,17 +598,263 @@ def general_analytics_dashboard(analyzer):
                  help="Dealers with highest business potential - call these first!")
     
     with col3:
-        total_listings = filtered_df['total_listings'].sum()
-        st.metric("Total Listings", f"{total_listings:,}",
-                 help="Total equipment listings across all dealers")
+        equipment_data_count = len(filtered_df[filtered_df['has_equipment_data'] == True])
+        st.metric("With Equipment Data", f"{equipment_data_count:,}",
+                 help="Contacts with year, make, model information")
     
     with col4:
-        avg_listings = filtered_df['total_listings'].mean()
-        time_saved = len(filtered_df) * 2  # Assume 2 minutes per manual lookup
-        st.metric("Time Saved", f"{time_saved:,} min", 
-                 help="Estimated time saved vs manual CSV analysis")
+        pricing_data_count = len(filtered_df[filtered_df['has_pricing_data'] == True])
+        st.metric("With Pricing Data", f"{pricing_data_count:,}",
+                 help="Contacts with listing price information")
+    
+    # CSV Download Section - ENHANCED FOR VISIBILITY
+    st.markdown("---")
+    st.markdown("## 📥 **DOWNLOAD FULL CONTACT LIST**")
+    st.markdown("### Export ALL contacts matching your current filters (not just high-value ones)")
+    
+    # Show current filter summary
+    filter_summary = []
+    if selected_category != 'All Categories':
+        filter_summary.append(f"**Category:** {selected_category}")
+    if selected_state != 'All':
+        filter_summary.append(f"**State:** {selected_state}")
+    if selected_priority != 'All':
+        filter_summary.append(f"**Priority:** {selected_priority}")
+    if selected_make != 'All Makes':
+        filter_summary.append(f"**Equipment Make:** {selected_make}")
+    if equipment_data_filter != 'All Contacts':
+        filter_summary.append(f"**Equipment Data:** {equipment_data_filter}")
+    if pricing_filter != 'All Contacts':
+        filter_summary.append(f"**Pricing:** {pricing_filter}")
+    
+    if filter_summary:
+        st.markdown("**Current Filters Applied:**")
+        st.markdown(" | ".join(filter_summary))
+    else:
+        st.markdown("**No filters applied - showing all contacts**")
+    
+    col1, col2, col3 = st.columns([2, 1, 1])
+    
+    with col1:
+        if len(filtered_df) > 0:
+            st.success(f"✅ Ready to download **{len(filtered_df):,} contacts**")
+            st.markdown("**Example:** If you selected 'Excavator' category, this downloads ALL excavator dealers, not just high-priority ones.")
+        else:
+            st.warning("⚠️ No contacts match your current filters")
+        
+        # Create comprehensive CSV data
+        if len(filtered_df) > 0:
+            # Prepare detailed export data
+            export_records = []
+            for _, row in filtered_df.iterrows():
+                # Basic contact info
+                record = {
+                    'Company': row['seller_company'],
+                    'Phone': row['primary_phone'],
+                    'Location': row['primary_location'], 
+                    'State': row['state'],
+                    'Email': row.get('email', ''),
+                    'Categories': row['categories'],
+                    'Total_Listings': row['total_listings'],
+                    'Priority_Level': row['priority_level'],
+                    'Priority_Score': row['priority_score'],
+                    'First_Contact_Date': row.get('first_contact_date', ''),
+                    'Last_Updated': row.get('last_updated', ''),
+                    'Number_of_Sources': row.get('num_sources', 1)
+                }
+                
+                # Equipment data (flatten arrays for CSV)
+                equipment_makes = ', '.join(row.get('equipment_makes', []))
+                equipment_models = ', '.join(row.get('equipment_models', []))
+                equipment_years = ', '.join(row.get('equipment_years', []))
+                listing_prices = ', '.join(row.get('listing_prices', []))
+                
+                record.update({
+                    'Equipment_Makes': equipment_makes,
+                    'Equipment_Models': equipment_models, 
+                    'Equipment_Years': equipment_years,
+                    'Listing_Prices': listing_prices,
+                    'Price_Range': row.get('price_range', 'No Pricing'),
+                    'Has_Equipment_Data': '✅' if row.get('has_equipment_data', False) else '❌',
+                    'Has_Pricing_Data': '✅' if row.get('has_pricing_data', False) else '❌'
+                })
+                
+                export_records.append(record)
+            
+            export_df = pd.DataFrame(export_records)
+            csv_data = export_df.to_csv(index=False)
+            
+            # Generate filename based on current filters
+            filename_parts = []
+            if selected_category != 'All Categories':
+                filename_parts.append(f"category-{selected_category.replace(' ', '-').replace('/', '-')}")
+            if selected_state != 'All':
+                filename_parts.append(f"state-{selected_state.replace(' ', '-')}")
+            if selected_priority != 'All':
+                filename_parts.append(f"priority-{selected_priority.lower()}")
+            if selected_make != 'All Makes':
+                filename_parts.append(f"make-{selected_make.replace(' ', '-')}")
+            
+            if filename_parts:
+                filename = f"contacts_{'_'.join(filename_parts)}_{datetime.now().strftime('%Y%m%d')}.csv"
+            else:
+                filename = f"all_contacts_{datetime.now().strftime('%Y%m%d')}.csv"
+            
+        else:
+            csv_data = "No data to export"
+            filename = "no_data.csv"
+    
+    with col2:
+        if len(filtered_df) > 0:
+            # Make the button much more prominent
+            st.markdown("### 🔥 **DOWNLOAD NOW**")
+            st.download_button(
+                label=f"📊 GET ALL {len(filtered_df):,} CONTACTS",
+                data=csv_data,
+                file_name=filename,
+                mime="text/csv",
+                help=f"Downloads ALL {len(filtered_df):,} contacts matching your filters",
+                use_container_width=True,
+                type="primary"
+            )
+            st.markdown(f"**File:** `{filename}`")
+        else:
+            st.error("❌ No contacts match your filters")
+            st.markdown("Try adjusting your filter settings above.")
+    
+    with col3:
+        if len(filtered_df) > 0:
+            # Quick stats about the export
+            st.metric("Export Size", f"{len(filtered_df):,} rows")
+            st.metric("File Size", f"{len(csv_data)//1024:.0f} KB")
+        else:
+            st.metric("Export Size", "0 rows")
+    
+    # Quick Category Downloads Section
+    st.markdown("---")
+    st.markdown("### 🏗️ **Quick Category Downloads**")
+    st.markdown("**One-click downloads for popular equipment categories:**")
+    
+    # Get category counts for quick download buttons
+    category_counts = {}
+    for _, contact in analyzer.df.iterrows():
+        categories = contact.get('categories', 'construction').split(',')
+        for cat in categories:
+            cat = cat.strip().lower()
+            if cat and cat != '' and cat != 'construction':
+                if cat not in category_counts:
+                    category_counts[cat] = 0
+                category_counts[cat] += 1
+    
+    # Sort by count and show top categories
+    sorted_cats = sorted(category_counts.items(), key=lambda x: x[1], reverse=True)[:6]
+    
+    if sorted_cats:
+        st.markdown("**Available Categories:**")
+        cols = st.columns(3)
+        for i, (cat, count) in enumerate(sorted_cats):
+            with cols[i % 3]:
+                # Create download data for this specific category
+                cat_filter_df = analyzer.df[analyzer.df['categories'].str.contains(cat, case=False, na=False)]
+                
+                if len(cat_filter_df) > 0:
+                    # Create CSV for this category
+                    cat_export_records = []
+                    for _, row in cat_filter_df.iterrows():
+                        record = {
+                            'Company': row['seller_company'],
+                            'Phone': row['primary_phone'],
+                            'Location': row['primary_location'],
+                            'State': row['state'],
+                            'Email': row.get('email', ''),
+                            'Categories': row['categories'],
+                            'Total_Listings': row['total_listings'],
+                            'Priority_Level': row['priority_level'],
+                            'Equipment_Makes': ', '.join(row.get('equipment_makes', [])),
+                            'Equipment_Models': ', '.join(row.get('equipment_models', [])),
+                            'Listing_Prices': ', '.join(row.get('listing_prices', []))
+                        }
+                        cat_export_records.append(record)
+                    
+                    cat_csv = pd.DataFrame(cat_export_records).to_csv(index=False)
+                    cat_filename = f"{cat}_contacts_{datetime.now().strftime('%Y%m%d')}.csv"
+                    
+                    st.download_button(
+                        label=f"📥 {cat.title()}\n({count:,} contacts)",
+                        data=cat_csv,
+                        file_name=cat_filename,
+                        mime="text/csv",
+                        help=f"Download all {count:,} {cat} dealers",
+                        use_container_width=True,
+                        key=f"quick_download_{cat}"
+                    )
+    else:
+        st.info("No category data available for quick downloads")
     
     # Use native Streamlit components for better compatibility
+    
+    # Equipment Analytics Row (NEW!)
+    st.markdown("---")
+    st.subheader("🔧 Equipment Intelligence")
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.markdown("**Top Equipment Makes**")
+        if filtered_df['equipment_makes'].apply(len).sum() > 0:
+            all_makes = []
+            for makes_list in filtered_df['equipment_makes']:
+                all_makes.extend(makes_list)
+            make_counts = pd.Series(all_makes).value_counts().head(10)
+            fig_makes = px.bar(
+                x=make_counts.values,
+                y=make_counts.index,
+                orientation='h',
+                labels={'x': 'Number of Contacts', 'y': 'Equipment Make'}
+            )
+            fig_makes.update_layout(yaxis={'categoryorder': 'total ascending'}, height=400)
+            st.plotly_chart(fig_makes, use_container_width=True)
+        else:
+            st.info("No equipment make data available in current selection.")
+    
+    with col2:
+        st.markdown("**Price Range Distribution**")
+        if filtered_df['has_pricing_data'].any():
+            price_range_counts = filtered_df[filtered_df['has_pricing_data']]['price_range'].value_counts()
+            fig_prices = px.pie(
+                values=price_range_counts.values,
+                names=price_range_counts.index,
+                color_discrete_sequence=px.colors.qualitative.Set3
+            )
+            st.plotly_chart(fig_prices, use_container_width=True)
+        else:
+            st.info("No pricing data available in current selection.")
+    
+    with col3:
+        st.markdown("**Equipment Data Coverage**")
+        data_coverage = {
+            'With Equipment Data': len(filtered_df[filtered_df['has_equipment_data'] == True]),
+            'Without Equipment Data': len(filtered_df[filtered_df['has_equipment_data'] == False]),
+            'With Pricing Data': len(filtered_df[filtered_df['has_pricing_data'] == True]),
+            'Without Pricing Data': len(filtered_df[filtered_df['has_pricing_data'] == False])
+        }
+        
+        # Create a simple bar chart for data coverage
+        coverage_df = pd.DataFrame(list(data_coverage.items()), columns=['Category', 'Count'])
+        fig_coverage = px.bar(
+            coverage_df,
+            x='Count',
+            y='Category',
+            orientation='h',
+            color='Category',
+            color_discrete_sequence=['#2E8B57', '#DC143C', '#1E90FF', '#FF6347']
+        )
+        fig_coverage.update_layout(showlegend=False, height=400)
+        st.plotly_chart(fig_coverage, use_container_width=True)
+    
+    # Traditional Charts Row
+    st.markdown("---")
+    st.subheader("📊 Traditional Analytics")
     
     # Charts row 1
     col1, col2 = st.columns(2)
@@ -600,29 +964,83 @@ def general_analytics_dashboard(analyzer):
         st.plotly_chart(fig_companies, use_container_width=True)
     
     # High-value contacts table
-    st.subheader("High-Value Contacts")
+    st.subheader("🎯 High-Value Contacts with Equipment Intelligence")
     
     high_value_df = filtered_df[filtered_df['priority_level'].isin(['Premium', 'High'])].sort_values('priority_score', ascending=False)
     
     if len(high_value_df) > 0:
-        # Format the display
-        display_df = high_value_df[['seller_company', 'primary_phone', 'primary_location', 'total_listings', 'priority_level', 'priority_score']].copy()
-        display_df.columns = ['Company', 'Phone', 'Location', 'Listings', 'Priority', 'Score']
+        # Create enhanced display with equipment info
+        display_records = []
+        for _, row in high_value_df.iterrows():
+            # Summarize equipment data
+            makes_summary = ', '.join(row['equipment_makes'][:3]) if row['equipment_makes'] else 'N/A'
+            if len(row['equipment_makes']) > 3:
+                makes_summary += f" (+{len(row['equipment_makes'])-3} more)"
+            
+            years_summary = 'N/A'
+            if row['equipment_years']:
+                unique_years = sorted(set(row['equipment_years']))
+                if len(unique_years) <= 3:
+                    years_summary = ', '.join(unique_years)
+                else:
+                    years_summary = f"{unique_years[0]}-{unique_years[-1]} ({len(unique_years)} years)"
+            
+            price_summary = row['price_range'] if row['has_pricing_data'] else 'No Pricing'
+            
+            display_records.append({
+                'Company': row['seller_company'],
+                'Phone': row['primary_phone'],
+                'Location': row['primary_location'],
+                'Listings': row['total_listings'],
+                'Priority': row['priority_level'],
+                'Score': row['priority_score'],
+                'Top Makes': makes_summary,
+                'Years': years_summary,
+                'Price Range': price_summary,
+                'Equipment Data': '✅' if row['has_equipment_data'] else '❌',
+                'Pricing Data': '✅' if row['has_pricing_data'] else '❌'
+            })
         
-        st.dataframe(
-            display_df,
-            use_container_width=True,
-            hide_index=True
-        )
+        display_df = pd.DataFrame(display_records)
         
-        # Download button
+        # Show equipment data toggle
+        show_equipment = st.checkbox("Show Equipment Details", value=True)
+        
+        if show_equipment:
+            st.dataframe(
+                display_df,
+                use_container_width=True,
+                hide_index=True
+            )
+        else:
+            # Show basic view
+            basic_df = display_df[['Company', 'Phone', 'Location', 'Listings', 'Priority', 'Score']]
+            st.dataframe(
+                basic_df,
+                use_container_width=True,
+                hide_index=True
+            )
+        
+        # Download button with equipment data
         csv = display_df.to_csv(index=False)
         st.download_button(
-            label="📥 Download High-Value Contacts CSV",
+            label="📥 Download High-Value Contacts with Equipment Data",
             data=csv,
-            file_name=f"high_value_contacts_{datetime.now().strftime('%Y%m%d')}.csv",
+            file_name=f"high_value_contacts_equipment_{datetime.now().strftime('%Y%m%d')}.csv",
             mime="text/csv"
         )
+        
+        # Equipment insights for high-value contacts
+        col1, col2 = st.columns(2)
+        with col1:
+            equipment_coverage = len([r for r in display_records if r['Equipment Data'] == '✅'])
+            st.metric("Equipment Data Coverage", f"{equipment_coverage}/{len(display_records)}", 
+                     f"{equipment_coverage/len(display_records)*100:.1f}%")
+        with col2:
+            pricing_coverage = len([r for r in display_records if r['Pricing Data'] == '✅'])
+            st.metric("Pricing Data Coverage", f"{pricing_coverage}/{len(display_records)}", 
+                     f"{pricing_coverage/len(display_records)*100:.1f}%")
+        
     else:
         st.info("No high-value contacts match your current filters.")
     
@@ -826,6 +1244,70 @@ def heavy_haulers_dashboard(analyzer):
             """.format(phone_rate), unsafe_allow_html=True)
         
         st.markdown("<br>", unsafe_allow_html=True)
+        
+        # Heavy Haulers CSV Download Section
+        st.subheader("📥 Export Sales Prospects")
+        
+        col1, col2, col3 = st.columns([2, 1, 1])
+        
+        with col1:
+            st.markdown("**Download current filtered prospects for your sales team**")
+            
+            if len(filtered_df) > 0:
+                # Create Heavy Haulers specific export
+                hh_export_records = []
+                for _, row in filtered_df.iterrows():
+                    record = {
+                        'Dealer_Name': row['name'],
+                        'Contact_Phone': row['phone'],
+                        'Location': row['location'],
+                        'State': row['state'],
+                        'Equipment_Specialization': row['equipment_types'],
+                        'Number_Equipment_Types': row['num_equipment_types'],
+                        'Total_Listings': row['total_listings'],
+                        'Data_Sources': row['num_sources'],
+                        'Business_Opportunity': 'High' if row['total_listings'] > 20 else 'Medium' if row['total_listings'] > 5 else 'Low',
+                        'Contact_ID': row['contact_id']
+                    }
+                    hh_export_records.append(record)
+                
+                hh_export_df = pd.DataFrame(hh_export_records)
+                hh_csv_data = hh_export_df.to_csv(index=False)
+                
+                # Generate Heavy Haulers specific filename
+                hh_filename_parts = ["heavy_haulers_prospects"]
+                if selected_equipment != 'All':
+                    hh_filename_parts.append(f"equipment-{selected_equipment.replace(' ', '-')}")
+                if selected_state != 'All':
+                    hh_filename_parts.append(f"state-{selected_state.replace(' ', '-')}")
+                
+                hh_filename = f"{'_'.join(hh_filename_parts)}_{datetime.now().strftime('%Y%m%d')}.csv"
+            else:
+                hh_csv_data = "No data to export"
+                hh_filename = "no_prospects.csv"
+        
+        with col2:
+            if len(filtered_df) > 0:
+                st.download_button(
+                    label="🚛 Download Prospects",
+                    data=hh_csv_data,
+                    file_name=hh_filename,
+                    mime="text/csv",
+                    help=f"Download {len(filtered_df):,} dealer prospects for Heavy Haulers sales team",
+                    use_container_width=True
+                )
+            else:
+                st.info("No prospects to download")
+        
+        with col3:
+            if len(filtered_df) > 0:
+                st.metric("Prospect Count", f"{len(filtered_df):,}")
+                high_opportunity = len(filtered_df[filtered_df['total_listings'] > 20])
+                st.metric("High Opportunity", f"{high_opportunity}")
+            else:
+                st.metric("Prospect Count", "0")
+        
+        st.markdown("---")
         
         # Charts
         col1, col2 = st.columns(2)

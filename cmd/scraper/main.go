@@ -117,7 +117,7 @@ func main() {
 	maxConsecutiveFailures := 5            // Stop if we get 5 consecutive failures
 
 	log.Printf("Starting sequential multi-page OCR scraper from page %d", startPage)
-	log.Printf("Scraping category: %s (Category=1028)", currentCategory)
+	log.Printf("Scraping category: %s (Category=1035)", currentCategory)
 	log.Printf("Target: Process through page %d", maxPages)
 	log.Println("Proxy rotation enabled - persistent session with proxy switching")
 	log.Println("Will continue scraping until all pages are processed or excessive failures occur...")
@@ -196,7 +196,7 @@ func main() {
 		allSellerInfo = append(allSellerInfo, sellerInfoList...)
 
 		// Add delay between pages to be respectful to the server
-		delay := 3 + rand.Intn(5) // 3-8 seconds between pages
+		delay := 3 + rand.Intn(3) // 3-8 seconds between pages
 		log.Printf("Waiting %d seconds before next page...", delay)
 		time.Sleep(time.Duration(delay) * time.Second)
 	}

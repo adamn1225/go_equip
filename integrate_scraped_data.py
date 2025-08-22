@@ -74,6 +74,7 @@ def integrate_scraped_data(scraped_file, master_file):
     new_contacts = 0
     updated_contacts = 0
     skipped_contacts = 0
+    all_categories = set()
     
     print(f"🔄 Processing {len(scraped_contacts)} scraped contacts...")
     
@@ -92,6 +93,10 @@ def integrate_scraped_data(scraped_file, master_file):
         price = contact.get('price', '').strip()
         url = contact.get('url', '').strip()
         
+        # Track category
+        if category:
+            all_categories.add(category)
+
         # Skip contacts without essential info
         if not phone and not company:
             skipped_contacts += 1
@@ -209,7 +214,12 @@ def integrate_scraped_data(scraped_file, master_file):
     master_data['contacts'] = existing_contacts
     master_data['metadata']['total_unique_contacts'] = len(existing_contacts)
     master_data['metadata']['last_updated'] = datetime.now().isoformat()
-    
+
+    # Update categories in metadata
+    prev_categories = set(master_data['metadata'].get('categories', []))
+    all_categories = prev_categories.union(all_categories)
+    master_data['metadata']['categories'] = sorted(all_categories)
+
     # Calculate total sources
     total_sources = 0
     for contact in existing_contacts.values():

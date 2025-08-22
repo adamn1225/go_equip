@@ -9,6 +9,7 @@ import json
 import os
 import pandas as pd
 import streamlit as st
+import subprocess
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -67,61 +68,116 @@ def check_password():
         return True
 
 class DashboardAnalyzer:
-    def __init__(self, master_log_file="master_contact_database.json"):
-        self.master_log_file = master_log_file
+    def __init__(self):
+        """Initialize D1-powered dashboard analyzer"""
+        self.database_name = "equipment-contacts"
         self.load_data()
     
-    def load_data(self):
-        """Load and process contact data"""
+    def execute_d1_query(self, sql_query):
+        """Execute a query on D1 database using wrangler CLI"""
         try:
-            # Load from local file (works both locally and on Streamlit Cloud)
-            with open(self.master_log_file, 'r', encoding='utf-8') as f:
-                self.master_log = json.load(f)
+            # Use wrangler CLI to query D1 (remote database with your credentials)
+            cmd = ["wrangler", "d1", "execute", self.database_name, "--remote", "--command", sql_query, "--json"]
             
-            # Convert to DataFrame
+            # Set environment variables for authentication
+            env = os.environ.copy()
+            env['CLOUDFLARE_API_TOKEN'] = 'nAHcEEszR31BJuiCrSyEIK8rOEtYmBtpk_eA7u_9'
+            env['CLOUDFLARE_ACCOUNT_ID'] = 'c0ae0f2da2cc0cf49cc5a01d3f24b30e'
+            
+            result = subprocess.run(cmd, capture_output=True, text=True, env=env)
+            
+            if result.returncode == 0:
+                # Parse the JSON output - D1 returns an array with results object
+                try:
+                    data = json.loads(result.stdout.strip())
+                    if isinstance(data, list) and len(data) > 0 and 'results' in data[0]:
+                        return data[0]['results']
+                    return []
+                except json.JSONDecodeError as e:
+                    st.error(f"JSON parsing error: {e}")
+                    st.error(f"Raw output: {result.stdout[:500]}...")
+                    return []
+            else:
+                st.error(f"D1 Query failed: {result.stderr}")
+                return []
+        except Exception as e:
+            st.error(f"Error executing D1 query: {e}")
+            return []
+    
+    def load_data(self):
+        """Load and process contact data from D1 database"""
+        try:
+            # Start with basic contact data
+            sql_query = """
+            SELECT 
+                id as contact_id,
+                seller_company,
+                primary_phone,
+                email,
+                primary_location,
+                city,
+                state,
+                total_listings,
+                first_contact_date
+            FROM contacts 
+            """
+            
+            results = self.execute_d1_query(sql_query)
+            
+            if not results:
+                st.error("No basic contact data returned from D1 database")
+                self.df = pd.DataFrame()
+                return
+            
+            st.info(f"Loaded {len(results)} contacts from D1 database")
+            
+            # Get categories data separately
+            category_sql = "SELECT DISTINCT contact_id, category FROM contact_sources"
+            category_results = self.execute_d1_query(category_sql)
+            
+            # Create category mapping
+            contact_categories = {}
+            for row in category_results:
+                contact_id = row['contact_id']
+                category = row.get('category', 'general')
+                if contact_id not in contact_categories:
+                    contact_categories[contact_id] = []
+                if category:
+                    contact_categories[contact_id].append(category)
+            
+            # Process results into DataFrame
             records = []
-            for contact_id, contact in self.master_log['contacts'].items():
+            
+            for row in results:
+                contact_id = row['contact_id']
+                
+                # Get categories for this contact
+                categories = contact_categories.get(contact_id, ['general'])
+                categories_str = ', '.join(set(categories)) if categories else 'general'
+                
                 record = {
                     'contact_id': contact_id,
-                    'primary_phone': contact['primary_phone'],
-                    'seller_company': contact['seller_company'],
-                    'primary_location': contact['primary_location'],
-                    'email': contact.get('email', ''),
-                    'total_listings': contact['total_listings'],
-                    'first_contact_date': contact['first_contact_date'],
-                    'num_sources': len(contact['sources'])
+                    'seller_company': row['seller_company'] or 'Unknown',
+                    'primary_phone': row['primary_phone'] or '',
+                    'email': row['email'] or '',
+                    'primary_location': row['primary_location'] or '',
+                    'city': row['city'] or '',
+                    'state': row['state'] or 'Unknown',
+                    'total_listings': row['total_listings'] or 1,
+                    'first_contact_date': row['first_contact_date'],
+                    'categories': categories_str,
+                    # Simplified equipment data for now
+                    'equipment_makes': [],
+                    'equipment_models': [],
+                    'equipment_years': [],
+                    'listing_prices': [],
+                    'has_equipment_data': False,
+                    'has_pricing_data': False,
+                    'unique_makes': 0,
+                    'unique_models': 0,
+                    'price_range': 'No Pricing',
+                    'num_sources': len(categories)
                 }
-                
-                # Extract equipment details from additional_info (NEW!)
-                additional_info = contact.get('additional_info', {})
-                record['equipment_years'] = additional_info.get('equipment_years', [])
-                record['equipment_makes'] = additional_info.get('equipment_makes', [])
-                record['equipment_models'] = additional_info.get('equipment_models', [])
-                record['listing_prices'] = additional_info.get('listing_prices', [])
-                record['listing_urls'] = additional_info.get('listing_urls', [])
-                
-                # Create summary fields for easier analysis
-                record['has_equipment_data'] = bool(record['equipment_years'] or record['equipment_makes'] or record['equipment_models'])
-                record['has_pricing_data'] = bool(record['listing_prices'])
-                record['unique_makes'] = len(set(record['equipment_makes'])) if record['equipment_makes'] else 0
-                record['unique_models'] = len(set(record['equipment_models'])) if record['equipment_models'] else 0
-                record['price_range'] = self._calculate_price_range(record['listing_prices'])
-                
-                # Extract state
-                location = contact['primary_location']
-                if location:
-                    match = re.search(r',\s*([A-Za-z\s]+)$', location)
-                    record['state'] = match.group(1).strip() if match else 'Unknown'
-                else:
-                    record['state'] = 'Unknown'
-                
-                # Extract categories from sources
-                categories = []
-                for source in contact.get('sources', []):
-                    category = source.get('category', '').strip()
-                    if category and category not in categories:
-                        categories.append(category)
-                record['categories'] = ', '.join(categories) if categories else 'construction'
                 
                 # Calculate priority score
                 record['priority_score'] = self._calculate_priority_score(record)
@@ -131,9 +187,29 @@ class DashboardAnalyzer:
             
             self.df = pd.DataFrame(records)
             
-        except FileNotFoundError:
-            st.error(f"Master database file not found: {self.master_log_file}")
+            # Create mock master_log for compatibility with existing features
+            unique_categories = []
+            for categories in contact_categories.values():
+                unique_categories.extend(categories)
+            
+            self.master_log = {
+                'metadata': {
+                    'categories': list(set(unique_categories)) if unique_categories else ['general']
+                },
+                'contacts': {record['contact_id']: record for record in records}
+            }
+            
+            st.success(f"Successfully processed {len(records)} contacts from D1!")
+            
+        except Exception as e:
+            st.error(f"Error loading data from D1: {str(e)}")
             self.df = pd.DataFrame()
+            self.master_log = {'metadata': {'categories': []}, 'contacts': {}}
+            
+        except Exception as e:
+            st.error(f"Error loading data from D1: {str(e)}")
+            self.df = pd.DataFrame()
+            self.master_log = {'metadata': {'categories': []}, 'contacts': {}}
     
     def _calculate_priority_score(self, record):
         """Calculate priority score"""
@@ -425,6 +501,12 @@ def main():
     if analyzer.df.empty:
         st.error("No data available. Please check your master database file.")
         return
+    
+    # Show all categories from database metadata
+    categories_in_db = analyzer.master_log.get('metadata', {}).get('categories', [])
+    if categories_in_db:
+        with st.expander('📚 All Categories in Database', expanded=False):
+            st.markdown(', '.join(sorted(categories_in_db)))
     
     # Route to appropriate dashboard
     if dashboard_mode == "heavy":

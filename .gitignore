@@ -2,7 +2,7 @@
 # master_contact_database.json  # Commented out - allowing in private repo
 *.log
 contact_analysis_report_*.csv
-high_priority_outreach_targets.csv
+high_priority_outreach_targets.csv 
 priority_outreach_contacts.csv
 seller_contacts_*.csv
 seller_contacts_*.json

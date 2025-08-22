@@ -10,6 +10,7 @@ import os
 import pandas as pd
 import streamlit as st
 import subprocess
+import requests
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -73,21 +74,49 @@ class DashboardAnalyzer:
         self.database_name = "equipment-contacts"
         self.load_data()
     
-    def execute_d1_query(self, sql_query):
-        """Execute a query on D1 database using wrangler CLI"""
+    def get_cloudflare_credentials(self):
+        """Get Cloudflare credentials from secrets or environment variables"""
         try:
-            # Use wrangler CLI to query D1 (remote database with your credentials)
+            # Try Streamlit secrets first (local development or Streamlit Cloud secrets)
+            if hasattr(st, 'secrets') and 'cloudflare' in st.secrets:
+                return {
+                    'api_token': st.secrets["cloudflare"]["api_token"],
+                    'account_id': st.secrets["cloudflare"]["account_id"],
+                    'database_id': st.secrets["cloudflare"]["database_id"]
+                }
+        except:
+            pass
+        
+        # Fallback to environment variables (Streamlit Cloud env vars or system env)
+        try:
+            return {
+                'api_token': os.environ['CLOUDFLARE_API_TOKEN'],
+                'account_id': os.environ['CLOUDFLARE_ACCOUNT_ID'], 
+                'database_id': os.environ['CLOUDFLARE_DATABASE_ID']
+            }
+        except KeyError as e:
+            st.error(f"Missing Cloudflare credential: {e}")
+            st.error("Please configure credentials in Streamlit secrets or environment variables")
+            return None
+
+    def execute_d1_query(self, sql_query):
+        """Execute a query on D1 database using wrangler CLI or HTTP API fallback"""
+        # Get credentials
+        creds = self.get_cloudflare_credentials()
+        if not creds:
+            return []
+        
+        # Try wrangler CLI first (for development)
+        try:
             cmd = ["wrangler", "d1", "execute", self.database_name, "--remote", "--command", sql_query, "--json"]
             
-            # Set environment variables for authentication
             env = os.environ.copy()
-            env['CLOUDFLARE_API_TOKEN'] = 'nAHcEEszR31BJuiCrSyEIK8rOEtYmBtpk_eA7u_9'
-            env['CLOUDFLARE_ACCOUNT_ID'] = 'c0ae0f2da2cc0cf49cc5a01d3f24b30e'
+            env['CLOUDFLARE_API_TOKEN'] = creds['api_token']
+            env['CLOUDFLARE_ACCOUNT_ID'] = creds['account_id']
             
             result = subprocess.run(cmd, capture_output=True, text=True, env=env)
             
             if result.returncode == 0:
-                # Parse the JSON output - D1 returns an array with results object
                 try:
                     data = json.loads(result.stdout.strip())
                     if isinstance(data, list) and len(data) > 0 and 'results' in data[0]:
@@ -95,13 +124,50 @@ class DashboardAnalyzer:
                     return []
                 except json.JSONDecodeError as e:
                     st.error(f"JSON parsing error: {e}")
-                    st.error(f"Raw output: {result.stdout[:500]}...")
                     return []
             else:
-                st.error(f"D1 Query failed: {result.stderr}")
-                return []
+                raise Exception("Wrangler failed, trying HTTP API")
+                
         except Exception as e:
-            st.error(f"Error executing D1 query: {e}")
+            # Fallback to HTTP API (for production)
+            return self.execute_d1_query_http(sql_query)
+    
+    def execute_d1_query_http(self, sql_query):
+        """Execute D1 query using HTTP API (production fallback)"""
+        try:
+            import requests
+            
+            # Get credentials 
+            creds = self.get_cloudflare_credentials()
+            if not creds:
+                return []
+            
+            url = f"https://api.cloudflare.com/client/v4/accounts/{creds['account_id']}/d1/database/{creds['database_id']}/query"
+            
+            headers = {
+                'Authorization': f'Bearer {creds["api_token"]}',
+                'Content-Type': 'application/json'
+            }
+            
+            payload = {
+                'sql': sql_query
+            }
+            
+            response = requests.post(url, headers=headers, json=payload)
+            
+            if response.status_code == 200:
+                data = response.json()
+                if data.get('success') and data.get('result'):
+                    return data['result'][0]['results']
+                else:
+                    st.error(f"D1 API error: {data}")
+                    return []
+            else:
+                st.error(f"HTTP error {response.status_code}: {response.text}")
+                return []
+                
+        except Exception as e:
+            st.error(f"Error executing D1 HTTP query: {e}")
             return []
     
     def load_data(self):

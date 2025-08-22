@@ -121,6 +121,7 @@ func main() {
 	// MachineryTrader category mapping
 	categoryMap := map[string]string{
 		"1007": "Asphalt/Pavers",
+		"1057": "Sweepers/Brooms",
 		"1040": "Lifts",
 		"1046": "Backhoes",
 		"1049": "Off-Highway Trucks",
@@ -135,9 +136,9 @@ func main() {
 		"1055": "skid steers",
 	}
 
-	// Configuration for concurrent scraping - Backhoes Category
-	baseURL := "https://www.machinerytrader.com/listings/search?Category=1055&page="
-	currentCategory := categoryMap["1046"] // Backhoes
+	// Configuration for concurrent scraping - Sweepers/Brooms Category
+	baseURL := "https://www.machinerytrader.com/listings/search?Category=1057&page="
+	currentCategory := categoryMap["1057"] // Sweepers/Brooms
 	startPage := *startPageFlag            // Use command line flag
 	maxPages := *endPageFlag               // Use command line flag
 	concurrency := *concurrencyFlag        // Use command line flag

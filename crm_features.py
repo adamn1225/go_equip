@@ -79,7 +79,7 @@ def render_sales_rep_selector():
     return selected_rep, sales_reps[selected_rep]
 
 def render_territory_assignment(df: pd.DataFrame):
-    """Territory-based lead assignment"""
+    """Territory-based lead assignment with unique phone numbers"""
     st.subheader("🗺️ Territory & Lead Assignment")
     
     crm = CRMManager()
@@ -89,7 +89,12 @@ def render_territory_assignment(df: pd.DataFrame):
     col1, col2 = st.columns([2, 1])
     
     with col1:
-        # Territory filter
+        # Territory filter - handle both unique_phones and contacts data
+        state_column = 'state' if 'state' in df.columns else 'primary_location'
+        if state_column == 'primary_location':
+            # Extract state from location for contacts table
+            df['state'] = df['primary_location'].apply(lambda x: x.split(',')[-1].strip() if ',' in str(x) else 'Unknown')
+        
         states = df['state'].unique() if 'state' in df.columns else ['All States']
         selected_states = st.multiselect(
             "Your Territory (States):",
@@ -98,8 +103,16 @@ def render_territory_assignment(df: pd.DataFrame):
         )
         
         # Filter unassigned leads in territory
-        territory_df = df[df['state'].isin(selected_states)] if 'state' in df.columns else df
+        if 'state' in df.columns:
+            territory_df = df[df['state'].isin(selected_states)]
+        else:
+            territory_df = df
+        
         unassigned_df = territory_df[~territory_df.index.isin(assignments.keys())]
+        
+        # Handle both dialer and contacts data structures
+        company_column = 'company_name' if 'company_name' in df.columns else 'seller_company'
+        phone_column = 'phone_number' if 'phone_number' in df.columns else 'primary_phone'
         
         st.metric("Available Leads in Territory", len(unassigned_df))
         st.metric("Your Assigned Leads", sum(1 for rep in assignments.values() if rep == current_rep))

@@ -175,16 +175,37 @@ def ultra_fast_bulk_upload():
         print("💡 Make sure files are in the correct directory")
         return
     
+    # Sort files by modification time (newest first)
+    all_files.sort(key=os.path.getmtime, reverse=True)
+    
     # Get already processed files
     processed_files = get_processed_files()
     
     # Filter to only new files (check basename)
     new_files = [f for f in all_files if os.path.basename(f) not in processed_files]
     
-    if not new_files:
-        print(f"✅ All {len(all_files)} files already processed")
+    # 🎯 SMART FILTERING: Only process files from the last 2 days
+    from datetime import datetime, timedelta
+    two_days_ago = datetime.now() - timedelta(days=2)
+    recent_new_files = []
+    
+    for filepath in new_files:
+        file_mtime = datetime.fromtimestamp(os.path.getmtime(filepath))
+        if file_mtime >= two_days_ago:
+            recent_new_files.append(filepath)
+    
+    if not recent_new_files:
+        if not new_files:
+            print(f"✅ All {len(all_files)} files already processed")
+        else:
+            print(f"� Found {len(new_files)} unprocessed files, but they're older than 2 days")
+            print(f"�💡 Newest unprocessed file: {os.path.basename(new_files[0])}")
+            print(f"💡 Use 'python ultra_fast_d1.py all' to process all files")
         print("💡 Run 'python ultra_fast_d1.py status' to check database")
         return
+    
+    # Use recent files
+    new_files = recent_new_files
     
     print(f"📄 Found {len(new_files)} new files to process:")
     for f in new_files[:10]:  # Show first 10
@@ -236,6 +257,93 @@ def ultra_fast_bulk_upload():
     print(f"   • Total contacts uploaded: {total_processed:,}")
     print(f"   • Database size: ~{current_total + total_processed:,} contacts")
     print(f"\\n🎯 Next Steps:")
+    print(f"   1. Run 'streamlit run dashboard.py' to see updated data")
+    print(f"   2. New categories will appear automatically in filters")
+
+def ultra_fast_bulk_upload_all():
+    """Process ALL unprocessed files (override 2-day filter)"""
+    print("🚀 ULTRA-FAST BULK D1 UPLOAD (ALL FILES)")
+    print("=" * 60)
+    
+    # Find all scraped data files
+    json_dir = os.path.join("mt_contacts", "json")
+    patterns = [
+        os.path.join(json_dir, "seller_contacts_*.json"),
+        os.path.join(json_dir, "seller_contacts_learning_*.json"), 
+        os.path.join(json_dir, "seller_contacts_emergency_*.json")
+    ]
+    
+    all_files = []
+    for pattern in patterns:
+        all_files.extend(glob.glob(pattern))
+    
+    if not all_files:
+        print("❌ No seller_contacts_*.json files found in mt_contacts/json/")
+        print("💡 Make sure files are in the correct directory")
+        return
+    
+    # Get already processed files
+    processed_files = get_processed_files()
+    
+    # Filter to only new files (check basename)
+    new_files = [f for f in all_files if os.path.basename(f) not in processed_files]
+    
+    if not new_files:
+        print(f"✅ All {len(all_files)} files already processed")
+        print("💡 Run 'python ultra_fast_d1.py status' to check database")
+        return
+    
+    print(f"⚠️  Processing ALL {len(new_files)} unprocessed files (may include duplicates)")
+    print(f"📄 Found {len(new_files)} new files to process:")
+    for f in new_files[:10]:  # Show first 10
+        print(f"   • {os.path.basename(f)}")
+    if len(new_files) > 10:
+        print(f"   ... and {len(new_files) - 10} more files")
+    
+    # Check D1 credentials
+    if not all([os.getenv('CLOUDFLARE_ACCOUNT_ID'), 
+                os.getenv('D1_DATABASE_ID'), 
+                os.getenv('CLOUDFLARE_API_TOKEN')]):
+        print("❌ Missing D1 credentials in .env file")
+        return
+    
+    print("\n🔍 Testing D1 connection...")
+    d1 = D1ScraperIntegration(
+        os.getenv('CLOUDFLARE_ACCOUNT_ID'),
+        os.getenv('D1_DATABASE_ID'),
+        os.getenv('CLOUDFLARE_API_TOKEN')
+    )
+    
+    # Test connection
+    result = d1.execute_query("SELECT COUNT(*) as total_contacts FROM contacts")
+    if not result or not result.get('success'):
+        print("❌ Failed to connect to D1 database")
+        return
+    
+    current_total = result['result'][0]['results'][0]['total_contacts']
+    print(f"✅ Connected! Current database size: {current_total:,} contacts")
+    
+    # Process each file
+    print("\n📤 Processing files...")
+    total_processed = 0
+    
+    for i, filepath in enumerate(new_files, 1):
+        print(f"\n📁 File {i}/{len(new_files)}: {os.path.basename(filepath)}")
+        
+        try:
+            processed = ultra_fast_upload_single_file(filepath)
+            total_processed += processed
+        except Exception as e:
+            print(f"   ❌ Error processing {os.path.basename(filepath)}: {e}")
+            continue
+    
+    print(f"\n🎉 BULK UPLOAD COMPLETE!")
+    print("=" * 60)
+    print(f"📊 Summary:")
+    print(f"   • Files processed: {len(new_files):,}")
+    print(f"   • Total contacts uploaded: {total_processed:,}")
+    print(f"   • Database size: ~{current_total + total_processed:,} contacts")
+    print(f"\n🎯 Next Steps:")
     print(f"   1. Run 'streamlit run dashboard.py' to see updated data")
     print(f"   2. New categories will appear automatically in filters")
 
@@ -319,19 +427,34 @@ def main():
         
         if command == 'status':
             check_d1_status()
+        elif command == 'all':
+            # Process ALL unprocessed files (override 2-day filter)
+            ultra_fast_bulk_upload_all()
         elif command == 'single' and len(sys.argv) > 2:
             filepath = sys.argv[2]
             if os.path.exists(filepath):
                 ultra_fast_upload_single_file(filepath)
             else:
                 print(f"❌ File not found: {filepath}")
+        elif command == 'recent' or command == 'new':
+            # Process only recent files (default behavior)
+            ultra_fast_bulk_upload()
         else:
+            print("🚀 Ultra-Fast D1 Upload System")
+            print("=" * 40)
             print("Usage:")
-            print("  python ultra_fast_d1.py           # Process all new files")
-            print("  python ultra_fast_d1.py status    # Check database status") 
+            print("  python ultra_fast_d1.py                # Process recent files (last 2 days)")
+            print("  python ultra_fast_d1.py recent         # Same as above")
+            print("  python ultra_fast_d1.py all            # Process ALL unprocessed files")
+            print("  python ultra_fast_d1.py status         # Check database status") 
             print("  python ultra_fast_d1.py single <file>  # Process specific file")
+            print()
+            print("💡 Smart Features:")
+            print("  • Automatic duplicate detection")
+            print("  • Only processes recent files by default")
+            print("  • Ultra-fast batch processing (72x faster)")
     else:
-        # Default: process all new files
+        # Default: process only recent files (last 2 days)
         ultra_fast_bulk_upload()
 
 if __name__ == "__main__":

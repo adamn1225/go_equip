@@ -134,11 +134,12 @@ func main() {
 		"1048": "grader",
 		"1027": "loader",
 		"1055": "skid steers",
+		"1058": "trenchers/cable plows",
 	}
 
-	// Configuration for concurrent scraping - Skid steers Category
-	baseURL := "https://www.machinerytrader.com/listings/search?Category=1055&page="
-	currentCategory := categoryMap["1055"] // afking Skid steers
+	// Configuration for concurrent scraping - Trenchers/Cable Plows Category
+	baseURL := "https://www.machinerytrader.com/listings/search?Category=1058&page="
+	currentCategory := categoryMap["1058"] // Tracking Trenchers/Cable Plows
 	startPage := *startPageFlag            // Use command line flag
 	maxPages := *endPageFlag               // Use command line flag
 	concurrency := *concurrencyFlag        // Use command line flag

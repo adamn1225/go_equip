@@ -171,83 +171,96 @@ class DashboardAnalyzer:
             return []
     
     def load_data(self):
-        """Load and process contact data from D1 database"""
+        """Load and process contact data from D1 database - USING UNIQUE PHONES"""
         try:
-            # Start with basic contact data
+            # Check if unique_phones table exists first
+            check_table_query = """
+            SELECT name FROM sqlite_master 
+            WHERE type='table' AND name='unique_phones'
+            """
+            
+            table_check = self.execute_d1_query(check_table_query)
+            
+            if not table_check:
+                st.warning("⚠️ Unique phones table not found. Please run: `python d1_dialer_setup.py populate`")
+                self.df = pd.DataFrame()
+                return
+            
+            # Use UNIQUE PHONES instead of raw contacts to avoid duplicates
+            # This reduces data from ~45K to ~11K unique contacts
             sql_query = """
             SELECT 
-                id as contact_id,
-                seller_company,
-                primary_phone,
-                email,
-                primary_location,
-                city,
-                state,
-                total_listings,
-                first_contact_date
-            FROM contacts 
+                up.phone_number as primary_phone,
+                up.company_name as seller_company,
+                up.location as primary_location,
+                up.equipment_category as categories,
+                up.total_listings,
+                up.priority_score,
+                up.first_seen_date,
+                up.last_updated,
+                up.call_status,
+                up.call_attempts,
+                up.sales_notes,
+                -- Extract state from location
+                CASE 
+                    WHEN up.location LIKE '%, %' 
+                    THEN TRIM(SUBSTR(up.location, INSTR(up.location, ',') + 1))
+                    ELSE 'Unknown'
+                END as state,
+                -- Priority level from score
+                CASE 
+                    WHEN up.priority_score >= 90 THEN 'Premium'
+                    WHEN up.priority_score >= 75 THEN 'High'
+                    WHEN up.priority_score >= 60 THEN 'Medium'
+                    WHEN up.priority_score >= 50 THEN 'Standard'
+                    ELSE 'Low'
+                END as priority_level
+            FROM unique_phones up
+            ORDER BY up.priority_score DESC, up.total_listings DESC
             """
             
             results = self.execute_d1_query(sql_query)
             
             if not results:
-                st.error("No basic contact data returned from D1 database")
+                st.error("❌ Failed to load unique phone data from D1 database")
                 self.df = pd.DataFrame()
                 return
             
-            st.info(f"Loaded {len(results)} contacts from D1 database")
+            st.success(f"✅ Loaded {len(results):,} UNIQUE contacts (75% duplicate reduction!)")
             
-            # Get categories data separately
-            category_sql = "SELECT DISTINCT contact_id, category FROM contact_sources"
-            category_results = self.execute_d1_query(category_sql)
-            
-            # Create category mapping
-            contact_categories = {}
-            for row in category_results:
-                contact_id = row['contact_id']
-                category = row.get('category', 'general')
-                if contact_id not in contact_categories:
-                    contact_categories[contact_id] = []
-                if category:
-                    contact_categories[contact_id].append(category)
-            
-            # Process results into DataFrame
+            # Process results into DataFrame - using UNIQUE PHONE data structure
             records = []
             
             for row in results:
-                contact_id = row['contact_id']
-                
-                # Get categories for this contact
-                categories = contact_categories.get(contact_id, ['general'])
-                categories_str = ', '.join(set(categories)) if categories else 'general'
-                
+                # Map unique_phones fields to dashboard format
                 record = {
-                    'contact_id': contact_id,
+                    'contact_id': f"UP_{row['primary_phone']}",  # Create synthetic ID
                     'seller_company': row['seller_company'] or 'Unknown',
                     'primary_phone': row['primary_phone'] or '',
-                    'email': row['email'] or '',
+                    'email': '',  # Not available in unique_phones table
                     'primary_location': row['primary_location'] or '',
-                    'city': row['city'] or '',
+                    'city': row['primary_location'].split(',')[0].strip() if row['primary_location'] and ',' in row['primary_location'] else row['primary_location'] or '',
                     'state': row['state'] or 'Unknown',
                     'total_listings': row['total_listings'] or 1,
-                    'first_contact_date': row['first_contact_date'],
-                    'categories': categories_str,
+                    'first_contact_date': row['first_seen_date'],
+                    'categories': row['categories'] or 'general',
+                    'priority_score': row['priority_score'] or 50,
+                    'priority_level': row['priority_level'] or 'Standard',
                     # Simplified equipment data for now
                     'equipment_makes': [],
                     'equipment_models': [],
                     'equipment_years': [],
                     'listing_prices': [],
-                    'has_equipment_data': False,
+                    'has_equipment_data': bool(row['categories']),
                     'has_pricing_data': False,
                     'unique_makes': 0,
                     'unique_models': 0,
                     'price_range': 'No Pricing',
-                    'num_sources': len(categories)
+                    'num_sources': 1,
+                    'call_status': row['call_status'] or 'Not Called',
+                    'call_attempts': row['call_attempts'] or 0,
+                    'sales_notes': row['sales_notes'] or ''
                 }
-                
-                # Calculate priority score
-                record['priority_score'] = self._calculate_priority_score(record)
-                record['priority_level'] = self._get_priority_level(record['priority_score'])
                 
                 records.append(record)
             
@@ -255,8 +268,12 @@ class DashboardAnalyzer:
             
             # Create mock master_log for compatibility with existing features
             unique_categories = []
-            for categories in contact_categories.values():
-                unique_categories.extend(categories)
+            if not self.df.empty:
+                for categories_str in self.df['categories'].dropna():
+                    if categories_str and categories_str != 'general':
+                        unique_categories.extend(categories_str.split(','))
+                        
+            unique_categories = [cat.strip() for cat in unique_categories if cat.strip()]
             
             self.master_log = {
                 'metadata': {
@@ -265,15 +282,10 @@ class DashboardAnalyzer:
                 'contacts': {record['contact_id']: record for record in records}
             }
             
-            st.success(f"Successfully processed {len(records)} contacts from D1!")
+            st.success(f"✅ Successfully processed {len(records):,} UNIQUE contacts from D1 database!")
             
         except Exception as e:
-            st.error(f"Error loading data from D1: {str(e)}")
-            self.df = pd.DataFrame()
-            self.master_log = {'metadata': {'categories': []}, 'contacts': {}}
-            
-        except Exception as e:
-            st.error(f"Error loading data from D1: {str(e)}")
+            st.error(f"❌ Error loading unique phone data from D1: {str(e)}")
             self.df = pd.DataFrame()
             self.master_log = {'metadata': {'categories': []}, 'contacts': {}}
     

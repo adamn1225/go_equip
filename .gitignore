@@ -12,6 +12,7 @@ contacts_*.csv
 # CAPTCHA Training Data (contains screenshots)
 captcha_training_data/
 captcha_env/
+ai_env/
 *.png
 *.jpg
 *.jpeg
@@ -20,6 +21,10 @@ captcha_env/
 *emergency*.json
 *learning*.json
 *periodic*.json
+
+# Scraped Data Organization
+mt_contacts/
+processed_files.json
 
 # Database files
 *.db

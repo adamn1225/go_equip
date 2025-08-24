@@ -66,8 +66,9 @@ class D1ScraperIntegration:
             [contact_id]
         )
         
-        if result and result.get('result'):
-            return len(result['result']) > 0
+        if result and result.get('success') and result.get('result'):
+            results = result['result'][0].get('results', [])
+            return len(results) > 0
         return False
     
     def insert_contact(self, contact_data, category, source_site):
@@ -101,7 +102,9 @@ class D1ScraperIntegration:
                 [contact_id, source_site, category]
             )
             
-            if not (source_check and source_check.get('result')):
+            if not (source_check and source_check.get('success') and 
+                   source_check.get('result') and 
+                   source_check['result'][0].get('results')):
                 # Add new source
                 source_sql = """
                     INSERT INTO contact_sources 
@@ -172,6 +175,172 @@ class D1ScraperIntegration:
             
             return False, "Failed to insert contact"
     
+    def batch_insert_contacts(self, contacts_data, category, source_site, batch_size=100):
+        """Insert multiple contacts in batches for better performance"""
+        total_contacts = len(contacts_data)
+        new_contacts = 0
+        updated_contacts = 0
+        
+        print(f"🚀 Starting batch upload of {total_contacts:,} contacts...")
+        
+        for i in range(0, total_contacts, batch_size):
+            batch = contacts_data[i:i + batch_size]
+            batch_new, batch_updated = self._process_contact_batch(batch, category, source_site)
+            
+            new_contacts += batch_new
+            updated_contacts += batch_updated
+            
+            progress = min(i + batch_size, total_contacts)
+            print(f"   Progress: {progress:,}/{total_contacts:,} contacts ({progress/total_contacts*100:.1f}%)")
+            
+        return new_contacts, updated_contacts
+    
+    def _process_contact_batch(self, batch, category, source_site):
+        """Process a batch of contacts using SQL transaction"""
+        new_contacts = 0
+        updated_contacts = 0
+        
+        # Prepare batch data
+        contact_inserts = []
+        contact_updates = []
+        source_inserts = []
+        equipment_inserts = []
+        
+        for contact_data in batch:
+            phone = contact_data.get('phone', '').strip()
+            company = contact_data.get('seller_company', '').strip()
+            location = contact_data.get('location', '').strip()
+            
+            if not phone and not company:
+                continue
+                
+            contact_id = self.create_contact_id(phone, company)
+            city, state = self.extract_location_parts(location)
+            
+            # Check if contact exists
+            if self.contact_exists(contact_id):
+                # Prepare update
+                contact_updates.append([datetime.now().isoformat(), contact_id])
+                updated_contacts += 1
+            else:
+                # Prepare insert
+                contact_inserts.append([
+                    contact_id, company, phone, location,
+                    datetime.now().strftime('%Y-%m-%d'),
+                    datetime.now().isoformat(),
+                    city, state
+                ])
+                new_contacts += 1
+            
+            # Prepare source insert
+            source_inserts.append([
+                contact_id, source_site, category,
+                datetime.now().strftime('%Y-%m-%d')
+            ])
+            
+            # Prepare equipment insert if available
+            if any(contact_data.get(field) for field in ['year', 'make', 'model', 'price']):
+                equipment_inserts.append([
+                    contact_id,
+                    contact_data.get('year', ''),
+                    contact_data.get('make', ''),
+                    contact_data.get('model', ''),
+                    contact_data.get('price', ''),
+                    contact_data.get('url', '')
+                ])
+        
+        # Execute batch operations
+        self._execute_batch_operations(contact_inserts, contact_updates, source_inserts, equipment_inserts)
+        
+        return new_contacts, updated_contacts
+    
+    def execute_batch_query(self, sql_statements):
+        """Execute multiple SQL statements in a single API call"""
+        payload = {
+            "sql": sql_statements  # D1 supports multiple statements
+        }
+        
+        response = requests.post(f"{self.base_url}/query", 
+                               headers=self.headers, 
+                               json=payload)
+        
+        if response.status_code == 200:
+            return response.json()
+        else:
+            print(f"❌ Batch query failed: {response.status_code} - {response.text}")
+            return None
+
+    def fast_batch_insert_contacts(self, contacts_data, category, source_site, batch_size=50):
+        """Ultra-fast batch insert using single API calls for batches"""
+        total_contacts = len(contacts_data)
+        processed = 0
+        
+        print(f"⚡ ULTRA-FAST batch upload of {total_contacts:,} contacts...")
+        
+        for i in range(0, total_contacts, batch_size):
+            batch = contacts_data[i:i + batch_size]
+            
+            # Build SQL statements for the entire batch
+            sql_statements = []
+            
+            for contact_data in batch:
+                phone = contact_data.get('phone', '').strip()
+                company = contact_data.get('seller_company', '').strip()
+                location = contact_data.get('location', '').strip()
+                
+                if not phone and not company:
+                    continue
+                    
+                contact_id = self.create_contact_id(phone, company)
+                city, state = self.extract_location_parts(location)
+                
+                # Build INSERT OR REPLACE for contact
+                contact_sql = f"""
+                    INSERT OR REPLACE INTO contacts 
+                    (id, seller_company, primary_phone, primary_location, 
+                     total_listings, first_contact_date, last_updated, city, state) 
+                    VALUES ('{contact_id}', '{company.replace("'", "''")}', '{phone}', '{location.replace("'", "''")}', 
+                            1, '{datetime.now().strftime('%Y-%m-%d')}', '{datetime.now().isoformat()}', 
+                            '{city.replace("'", "''")}', '{state}');
+                """
+                sql_statements.append(contact_sql)
+                
+                # Build INSERT OR IGNORE for source
+                source_sql = f"""
+                    INSERT OR IGNORE INTO contact_sources 
+                    (contact_id, site, category, first_seen, listing_count) 
+                    VALUES ('{contact_id}', '{source_site}', '{category}', '{datetime.now().strftime('%Y-%m-%d')}', 1);
+                """
+                sql_statements.append(source_sql)
+                
+                # Build equipment insert if available
+                if any(contact_data.get(field) for field in ['year', 'make', 'model', 'price']):
+                    equipment_sql = f"""
+                        INSERT INTO equipment_data 
+                        (contact_id, equipment_year, equipment_make, 
+                         equipment_model, listing_price, listing_url) 
+                        VALUES ('{contact_id}', '{contact_data.get('year', '')}', 
+                                '{contact_data.get('make', '').replace("'", "''")}', 
+                                '{contact_data.get('model', '').replace("'", "''")}',
+                                '{contact_data.get('price', '')}', '{contact_data.get('url', '')}');
+                    """
+                    sql_statements.append(equipment_sql)
+            
+            if sql_statements:
+                # Execute entire batch in single API call
+                combined_sql = "\n".join(sql_statements)
+                result = self.execute_query(combined_sql)
+                
+                if result:
+                    processed += len(batch)
+                    progress = min(i + batch_size, total_contacts)
+                    print(f"   ⚡ Batch {i//batch_size + 1}: {progress:,}/{total_contacts:,} contacts ({progress/total_contacts*100:.1f}%)")
+                else:
+                    print(f"   ❌ Batch {i//batch_size + 1} failed")
+        
+        print(f"   ✅ Processed {processed:,} contacts using ultra-fast batch method")
+        return processed, 0  # Return processed count
+
     def integrate_scraped_file(self, scraped_file):
         """Integrate a complete scraped JSON file"""
         print(f"📥 Loading scraped data from {scraped_file}...")

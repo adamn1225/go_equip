@@ -158,8 +158,12 @@ func main() {
 		if len(allSellerInfo) > 0 {
 			log.Printf("Emergency save triggered - saving %d contacts...", len(allSellerInfo))
 			timestamp := time.Now().Format("20060102_150405")
-			csvFile := fmt.Sprintf("seller_contacts_emergency_%s.csv", timestamp)
-			jsonFile := fmt.Sprintf("seller_contacts_emergency_%s.json", timestamp)
+			csvFile := fmt.Sprintf("mt_contacts/csv/seller_contacts_emergency_%s.csv", timestamp)
+			jsonFile := fmt.Sprintf("mt_contacts/json/seller_contacts_emergency_%s.json", timestamp)
+
+			// Ensure directories exist
+			os.MkdirAll("mt_contacts/csv", 0755)
+			os.MkdirAll("mt_contacts/json", 0755)
 
 			exportToCSV(allSellerInfo, csvFile)
 			exportToJSON(allSellerInfo, jsonFile, currentCategory)
@@ -252,8 +256,12 @@ func main() {
 					if len(allSellerInfo) == totalContacts { // Double-check we're the one hitting the milestone
 						log.Printf("Periodic save at %d contacts - saving data...", totalContacts)
 						timestamp := time.Now().Format("20060102_150405")
-						csvFile := fmt.Sprintf("seller_contacts_periodic_%s_contacts%d.csv", timestamp, totalContacts)
-						jsonFile := fmt.Sprintf("seller_contacts_periodic_%s_contacts%d.json", timestamp, totalContacts)
+						csvFile := fmt.Sprintf("mt_contacts/csv/seller_contacts_periodic_%s_contacts%d.csv", timestamp, totalContacts)
+						jsonFile := fmt.Sprintf("mt_contacts/json/seller_contacts_periodic_%s_contacts%d.json", timestamp, totalContacts)
+
+						// Ensure directories exist
+						os.MkdirAll("mt_contacts/csv", 0755)
+						os.MkdirAll("mt_contacts/json", 0755)
 
 						exportToCSV(allSellerInfo, csvFile)
 						exportToJSON(allSellerInfo, jsonFile, currentCategory)
@@ -279,8 +287,12 @@ func main() {
 	if len(allSellerInfo) > 0 {
 		// Export to CSV and JSON
 		timestamp := time.Now().Format("20060102_150405")
-		csvFile := fmt.Sprintf("seller_contacts_learning_%s.csv", timestamp)
-		jsonFile := fmt.Sprintf("seller_contacts_learning_%s.json", timestamp)
+		csvFile := fmt.Sprintf("mt_contacts/csv/seller_contacts_learning_%s.csv", timestamp)
+		jsonFile := fmt.Sprintf("mt_contacts/json/seller_contacts_learning_%s.json", timestamp)
+
+		// Ensure directories exist
+		os.MkdirAll("mt_contacts/csv", 0755)
+		os.MkdirAll("mt_contacts/json", 0755)
 
 		// Export to CSV
 		err := exportToCSV(allSellerInfo, csvFile)

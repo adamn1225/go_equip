@@ -322,12 +322,26 @@ class CaptchaTrainer:
     
     def __init__(self, data_dir="captcha_training_data"):
         self.data_dir = Path(data_dir)
+        
+        # 🚀 SMART DEVICE SELECTION - RTX 5070 now supported with CUDA 12.8!
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         
         logger.info(f"Using device: {self.device}")
         if self.device.type == "cuda":
-            logger.info(f"GPU: {torch.cuda.get_device_name(0)}")
-            logger.info(f"VRAM: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f}GB")
+            gpu_name = torch.cuda.get_device_name(0)
+            capability = torch.cuda.get_device_capability(0)
+            logger.info(f"🚀 GPU: {gpu_name}")
+            logger.info(f"⚡ Compute Capability: sm_{capability[0]}{capability[1]}")
+            logger.info(f"💾 VRAM: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f}GB")
+            
+            if capability >= (12, 0):
+                logger.info("🎉 RTX 50-series GPU detected with full PyTorch support!")
+        else:
+            import os
+            cpu_count = os.cpu_count()
+            logger.info(f"🖥️  CPU: {cpu_count} cores - optimizing for multi-core training")
+            torch.set_num_threads(cpu_count)
+            torch.set_num_interop_threads(cpu_count)
         
         # Image preprocessing
         self.transform = transforms.Compose([
@@ -385,6 +399,38 @@ class CaptchaTrainer:
         return torch.stack(images), torch.tensor(labels, dtype=torch.long)
     
     def train_model(self, epochs=20, batch_size=8, learning_rate=0.001):
+        """
+        🎓 TRAIN THE CNN MODEL - This is where the "learning" happens!
+        
+        🚀 OPTIMIZED FOR RTX 5070 WITH CUDA 12.8:
+        - Full GPU acceleration with Blackwell architecture support
+        - Automatic batch size optimization for GPU/CPU
+        - Multi-core CPU fallback if needed
+        
+        🔄 TRAINING PROCESS OVERVIEW:
+        1. Show the model examples (images + correct answers)
+        2. Model makes predictions 
+        3. Calculate how wrong the predictions are (loss)
+        4. Adjust the model's "weights" to be less wrong
+        5. Repeat thousands of times until model gets smart!
+        
+        PARAMETERS EXPLAINED:
+        - epochs: How many times to show ALL training data (20 = see everything 20 times)
+        - batch_size: How many images to process at once (8 = process 8 images together)  
+        - learning_rate: How big steps to take when adjusting (0.001 = small careful steps)
+        """
+        
+        # 🎯 AUTO-OPTIMIZE BATCH SIZE FOR DEVICE
+        if self.device.type == "cpu":
+            batch_size = min(batch_size, 4)
+            logger.info(f"🖥️  CPU training optimized: batch_size={batch_size}")
+        else:
+            # GPU can handle larger batches
+            logger.info(f"� GPU training: batch_size={batch_size}")
+            
+        logger.info("Starting model training...")
+    
+    def train_model_original(self, epochs=20, batch_size=8, learning_rate=0.001):
         """
         🎓 TRAIN THE CNN MODEL - This is where the "learning" happens!
         

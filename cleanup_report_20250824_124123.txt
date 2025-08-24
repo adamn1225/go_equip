@@ -1,0 +1,19 @@
+
+📊 SCRAPED DATA CLEANUP REPORT
+Generated: 2025-08-24 12:41:23
+================================
+
+📁 File Counts:
+   • JSON files: 29
+   • CSV files: 29
+   • Total files: 58
+
+💾 Storage:
+   • Total size: 29.9 MB
+
+🔍 Analysis:
+   • Duplicate groups: 0
+   • Invalid files: 0
+
+🧹 Recommendations:
+   ✅ Files are well organized!\n
